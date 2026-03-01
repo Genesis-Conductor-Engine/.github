@@ -1,0 +1,39 @@
+name: Yennefer Live Feed Update
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  update-feed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout profile repo
+        uses: actions/checkout@v4
+        with:
+          path: main-profile
+
+      - name: Checkout Diamond-V repo
+        uses: actions/checkout@v4
+        with:
+          repository: Genesis-Conductor-Engine/Diamond-V
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: Diamond-V
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Generate and Inject Feed
+        run: python main-profile/scripts/update_feed.py
+
+      - name: Commit and Push Update
+        working-directory: ./main-profile
+        run: |
+          git config --global user.name "Yennefer Agent"
+          git config --global user.email "igor@kovachenterprises.com"
+          git add profile/README.md
+          git commit -m "Update Yennefer live feed" || exit 0
+          git push
