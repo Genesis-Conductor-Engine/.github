@@ -1,0 +1,21 @@
+name = "genesis-billing-worker"
+main = "genesis_billing_worker.js"
+compatibility_date = "2024-01-01"
+workers_dev = true
+
+# Cron: flush to Stripe every hour
+[triggers]
+crons = ["0 * * * *"]
+
+# D1 binding — genesis-seismic-log
+[[d1_databases]]
+binding = "GENESIS_DB"
+database_name = "genesis-seismic-log"
+database_id = "b3882029-21b8-44c0-a059-a51e33721546"
+
+# Secrets (set via: wrangler secret put <NAME>)
+# WORKER_AUTH_TOKEN      — bearer token for POST /telemetry
+# STRIPE_SECRET_KEY      — sk_live_...
+# STRIPE_METER_EVENT     — qflop_produced
+# STRIPE_CUSTOMER_ID     — cus_...
+# STRIPE_SUBSCRIPTION_ITEM_ID — si_...
