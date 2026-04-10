@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "update-feed",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["scripts/update_feed.py"],
+      "port": 0
+    }
+  ]
+}
