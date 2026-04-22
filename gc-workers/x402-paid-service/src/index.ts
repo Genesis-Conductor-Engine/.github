@@ -129,6 +129,30 @@ Health check endpoint.
 - Vault: 0xc9d3d5a00d369d698b78d4cbe926a0c57e0ea3f5
 - USDC: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
 
+## Ambient Submit Skill
+
+The \`ambient-submit\` skill enables natural language task submission to the Genesis Conductor fleet.
+
+### Capabilities
+- Submit async tasks: "let kiro handle this", "queue this job"
+- Check job status: "what's the status of tsk_xxx"
+- Fleet health: "fleet status", "check all workers"
+
+### Agent Routing
+- kiro: implementation, deployment
+- codex: security fixes
+- claude: architecture review
+- gemini: GCP operations
+- copilot: inline suggestions
+
+### API
+- POST /v1/tasks - Submit task
+- GET /v1/jobs - Check status
+- POST /v1/approvals/{id}/approve - Approve
+
+### OpenAPI
+https://optimization-inversion.genesisconductor.io/openapi.json
+
 ## Links
 - x402 Spec: /.well-known/x402
 - OpenAPI: /openapi.json

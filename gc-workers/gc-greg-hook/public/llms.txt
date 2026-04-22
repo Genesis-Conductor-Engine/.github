@@ -1,0 +1,49 @@
+# Greg Notion Hook — Genesis Conductor
+
+> Cloudflare Worker that watches Notion spec pages and emits spec.emitted 
+> events to the Ambient Access Layer. Debounced by (page_url, 60s) with
+> revision_id tracking per Greg charter invariants.
+
+## Endpoints
+- [POST /webhook](./openapi.yaml#/paths/~1webhook): Receive Notion webhooks
+- [GET /poll](./openapi.yaml#/paths/~1poll): Poll tracked pages on demand
+- [GET /pages](./openapi.yaml#/paths/~1pages): List tracked Notion pages
+- [GET /health](./openapi.yaml#/paths/~1health): Health check
+
+## Greg Invariants (from charter)
+- Reference-only emission: page_url + revision_id, never content
+- One canonical spec per concept
+- Every claim resolves to a real artifact
+- Refusal beats fabrication
+
+## Integration
+- A2A Protocol: JSON-RPC 2.0 spec.emitted events
+- Notion API: Watches 10 tracked pages including main spec + Greg charter
+- Ambient Access Layer: POSTs to /v1/tasks with request_type=spec_publish
+
+## Ambient Submit Skill
+
+The `ambient-submit` skill enables natural language task submission to the Genesis Conductor fleet.
+
+### Capabilities
+- Submit async tasks: "let kiro handle this", "queue this job"
+- Check job status: "what's the status of tsk_xxx"
+- Fleet health: "fleet status", "check all workers"
+
+### Agent Routing
+- kiro: implementation, deployment
+- codex: security fixes
+- claude: architecture review
+- gemini: GCP operations
+- copilot: inline suggestions
+
+### API
+- POST /v1/tasks - Submit task
+- GET /v1/jobs - Check status
+- POST /v1/approvals/{id}/approve - Approve
+
+### OpenAPI
+https://optimization-inversion.genesisconductor.io/openapi.json
+
+## Source
+- [GitHub](https://github.com/Genesis-Conductor-Engine/gc-greg-hook)

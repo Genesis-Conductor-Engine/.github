@@ -1,0 +1,47 @@
+# GC-16 Capsule Bridge — Genesis Conductor
+
+> Cloudflare Worker that bridges GC-16 Google Workspace sync events to the 
+> Soul Capsule event log. Idempotent cursor-based ingestion with auth-aware
+> circuit breaker.
+
+## Endpoints
+- [POST /sync](./openapi.yaml#/paths/~1sync): Ingest sync batch with cursor
+- [POST /auth-status](./openapi.yaml#/paths/~1auth-status): Update GC-16 auth state  
+- [GET /health](./openapi.yaml#/paths/~1health): Health check
+
+## Concepts
+- Soul Capsule Event Log: Append-only telemetry for Genesis Conductor fleet
+- Cursor Idempotency: Skip re-ingestion via KV-stored (source, cursor) pairs
+- Auth Circuit Breaker: Refuse ops if GC-16 reported no_auth within 24h
+
+## Integration
+- A2A Protocol: JSON-RPC 2.0 envelopes for artifact coordination
+- MCP Compatible: Can be exposed via MCP server adapter
+- OpenAI Actions: See ai-plugin.json for ChatGPT integration
+
+## Ambient Submit Skill
+
+The `ambient-submit` skill enables natural language task submission to the Genesis Conductor fleet.
+
+### Capabilities
+- Submit async tasks: "let kiro handle this", "queue this job"
+- Check job status: "what's the status of tsk_xxx"
+- Fleet health: "fleet status", "check all workers"
+
+### Agent Routing
+- kiro: implementation, deployment
+- codex: security fixes
+- claude: architecture review
+- gemini: GCP operations
+- copilot: inline suggestions
+
+### API
+- POST /v1/tasks - Submit task
+- GET /v1/jobs - Check status
+- POST /v1/approvals/{id}/approve - Approve
+
+### OpenAPI
+https://optimization-inversion.genesisconductor.io/openapi.json
+
+## Source
+- [GitHub](https://github.com/Genesis-Conductor-Engine/gc-16-capsule-bridge)
