@@ -1,0 +1,26 @@
+# Genesis Conductor Engine — Organization
+
+> AI-native application scaffolding with topological reasoning and thermodynamic verification.
+> Founded by Igor Holt, AI Architect.
+
+## Organization
+- Name: Genesis Conductor Engine
+- Founder: Igor Holt
+- Website: https://genesisconductor.io
+- API: https://optimization-inversion.genesisconductor.io
+
+## Core Repositories
+- [Genesis-Conductor](https://github.com/Genesis-Conductor-Engine/Genesis-Conductor): Main scaffolding engine
+- [self-evolving-retrainer](https://github.com/Genesis-Conductor-Engine/self-evolving-retrainer): Prompt optimization
+- [genesis-conductor-powers](https://github.com/Genesis-Conductor-Engine/genesis-conductor-powers): Kiro Powers
+
+## Technology
+- Topological reasoning for AI orchestration
+- A2A v0.3 protocol for agent coordination
+- MCP 2024-11-05 for tool discovery
+- S-ToT thermodynamic verification
+
+## Services
+- Ambient Access Layer: Persistent AI agents
+- MCP Server Registry: Tool discovery
+- A2A Fleet: Agent coordination
