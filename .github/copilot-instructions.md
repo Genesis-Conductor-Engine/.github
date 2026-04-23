@@ -41,3 +41,10 @@ Every Cloudflare Worker should include in `public/`:
 - `/.well-known/a2a.json` — A2A agent discovery
 
 Use IndexNow for instant Bing/Yandex indexing (Google sitemap ping is deprecated).
+
+## x402 Settlement Vault (Base Mainnet)
+
+- **Vault:** `0xB6D9935af4478fc54404DD95aC0942D28de01F08`
+- **USDC:** `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
+- **Chain:** Base (8453)
+- **Contract:** EnterpriseEscrowVault
