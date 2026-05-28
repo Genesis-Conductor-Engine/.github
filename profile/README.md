@@ -60,6 +60,24 @@ Genesis Conductor repositories are organized around these knowledge surfaces for
 | [Pareto](https://github.com/Genesis-Conductor-Engine/Pareto) | Multi-objective optimization and evaluation layer. |
 | [ouroboros-v2-publication](https://github.com/Genesis-Conductor-Engine/ouroboros-v2-publication) | Publication-grade research artifact surface. |
 
+## OpenClaw Skills by @invariantx
+
+Production-grade agent infrastructure for persistent state, MCP bridging, and secure Smithery orchestration:
+
+| Skill | Purpose |
+| --- | --- |
+| `grok-persistent-state` | Durable memory + unified skill registry for stateless LLMs |
+| `mcp-openclaw-bridge` | Turn MCP servers into permanent ClawHub skills |
+| `smithery-mcp-orchestrator` | Secure token scoping + namespace discipline for 100K+ tools |
+
+```bash
+clawhub install grok-persistent-state
+clawhub install mcp-openclaw-bridge
+clawhub install smithery-mcp-orchestrator
+```
+
+Repo: [igor-holt/openclaw-skills](https://github.com/igor-holt/openclaw-skills) · Follow [@invariantx](https://x.com/invariantx)
+
 ## For LLM and agentic retrieval
 
 This organization exposes an agent-query surface through:
