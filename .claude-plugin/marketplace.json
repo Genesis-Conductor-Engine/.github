@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "genesis-conductor-org-profile",
+  "owner": {
+    "name": "Genesis Conductor Engine (Igor Holt @invariantx)",
+    "url": "https://github.com/Genesis-Conductor-Engine"
+  },
+  "description": "Public profile repository and shared configuration surface for the Genesis Conductor Engine organization. Provides LLMS.txt, copilot instructions, org-level knowledge nodes, and documentation anchors for the full ecosystem of agentic AI, provenance verification, thermodynamic orchestration, and OpenClaw skills. Central entrypoint tying all Genesis-Conductor-Engine and @invariantx public repositories together under the Genesis Conductor topological reasoning platform.",
+  "version": "1.0.0",
+  "homepage": "https://github.com/Genesis-Conductor-Engine/.github",
+  "keywords": [
+    "genesis-conductor",
+    "invariantx",
+    "openclaw",
+    "org-profile",
+    "agentic-ecosystem",
+    "provenance-verification",
+    "thermodynamic-ai",
+    "federal-ai-workflows",
+    "claude-marketplace",
+    "llms-txt",
+    "agent-infrastructure"
+  ],
+  "plugins": [
+    {
+      "name": "genesis-conductor-profile",
+      "source": "https://github.com/Genesis-Conductor-Engine/.github",
+      "description": "Organization profile and shared assets for Genesis Conductor Engine. Includes LLM-readable instructions (LLMS.txt), knowledge graphs, SEO content maps, and references to the core OpenClaw skills by @invariantx (grok-persistent-state, mcp-openclaw-bridge, smithery-mcp-orchestrator). Install the primary skills via ClawHub and explore the full public surface of the Genesis Conductor ecosystem.",
+      "version": "1.0.0",
+      "tags": ["org-profile", "genesis-conductor", "documentation", "ecosystem-entrypoint"],
+      "category": "ecosystem",
+      "homepage": "https://github.com/Genesis-Conductor-Engine/.github",
+      "keywords": ["genesis conductor org profile", "openclaw skills reference", "@invariantx", "agentic ai infrastructure", "llms.txt for agents"]
+    }
+  ],
+  "links": {
+    "website": "https://genesisconductor.io",
+    "x": "https://x.com/invariantx",
+    "github": "https://github.com/Genesis-Conductor-Engine",
+    "main-marketplace": "https://github.com/igor-holt/openclaw-skills",
+    "primary-skills-install": "clawhub install grok-persistent-state && clawhub install mcp-openclaw-bridge && clawhub install smithery-mcp-orchestrator"
+  }
+}
