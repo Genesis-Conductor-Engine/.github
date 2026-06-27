@@ -16,8 +16,9 @@ set -euo pipefail
 
 THRESHOLD="${THRESHOLD_ETH:-0.002}"
 SWAP_USDC="${SWAP_USDC:-1500000}"
-RPC="${BASE_RPC_URL:-https://base.llamarpc.com}"
-RPC_FALLBACK="https://mainnet.base.org"
+CDP_RPC="https://api.developer.coinbase.com/rpc/v1/base/AvPSHyOlGbEWXEU6JXqawbXZMwTJGGnO"
+RPC="${BASE_RPC_URL:-$CDP_RPC}"
+RPC_FALLBACK="https://base.llamarpc.com"
 VAULT="0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8"
 MAIN_WALLET="0x60C4499870f115664d7FfD8411b023DBEf3377d9"
 USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
