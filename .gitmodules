@@ -1,0 +1,3 @@
+[submodule "euler-cycle-attestor/lib/openzeppelin-contracts"]
+	path = euler-cycle-attestor/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
