@@ -1,3 +1,6 @@
 # Claude IDE local data — do not commit
 .claude/*
 !.claude/launch.json
+
+.gemini/
+gha-creds-*.json
