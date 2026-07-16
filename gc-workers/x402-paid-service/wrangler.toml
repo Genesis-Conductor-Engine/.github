@@ -38,5 +38,6 @@ SHOPIFY_SOURCE_EXCLUSIVE_URL = "https://shop.genesisconductor.io/products/gc-sou
 # Shopify store domain for Admin API calls
 SHOPIFY_STORE_DOMAIN = "shop.genesisconductor.io"
 # Gas monitoring — checked every 6h by cron
-BASE_RPC_URL = "https://api.developer.coinbase.com/rpc/v1/base/AvPSHyOlGbEWXEU6JXqawbXZMwTJGGnO"
+# BASE_RPC_URL is a secret, not a var — set it with:
+#   wrangler secret put BASE_RPC_URL
 MAIN_WALLET = "0x60C4499870f115664d7FfD8411b023DBEf3377d9"

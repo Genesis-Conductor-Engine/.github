@@ -349,7 +349,6 @@ ${tierDocs}
 
 const GAS_LOW_THRESHOLD_WEI = BigInt('2000000000000000');  // 0.002 ETH
 const BASE_RPC_FALLBACKS = [
-  'https://api.developer.coinbase.com/rpc/v1/base/AvPSHyOlGbEWXEU6JXqawbXZMwTJGGnO',
   'https://base.llamarpc.com',
   'https://base-rpc.publicnode.com',
   'https://mainnet.base.org',
