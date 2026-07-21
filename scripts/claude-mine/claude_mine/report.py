@@ -29,6 +29,13 @@ def write_markdown(report: dict[str, Any], path: PathLike) -> None:
     p.write_text(_render_markdown(report), encoding="utf-8")
 
 
+def write_goal_markdown(report: dict[str, Any], path: PathLike) -> None:
+    """Write a human-readable Markdown goal-outcome report."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(_render_goal_markdown(report), encoding="utf-8")
+
+
 def _render_markdown(report: dict[str, Any]) -> str:
     session_id = report.get("session_id") or ""
     source = report.get("path") or ""
@@ -93,6 +100,73 @@ def _render_markdown(report: dict[str, Any]) -> str:
             lines.append("")
     else:
         lines.append("_No user snippets._")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _render_goal_markdown(report: dict[str, Any]) -> str:
+    session_id = report.get("session_id") or ""
+    source = report.get("path") or ""
+    status = report.get("status") or "unknown"
+    confidence = report.get("confidence")
+    incomplete_hits = report.get("incomplete_hits", 0)
+    success_hits = report.get("success_hits", 0)
+    blockers = report.get("blockers") or []
+    candidates = report.get("goal_candidates") or []
+    line_count = report.get("line_count")
+    first_ts = report.get("first_ts")
+    last_ts = report.get("last_ts")
+
+    conf_s = (
+        f"{float(confidence):.2f}"
+        if isinstance(confidence, (int, float))
+        else "n/a"
+    )
+
+    lines: list[str] = []
+    lines.append(f"# Goal outcome — `{session_id}`")
+    lines.append("")
+    lines.append("## Session")
+    lines.append("")
+    lines.append(f"- **session_id:** `{session_id}`")
+    lines.append(f"- **path:** `{source}`")
+    if line_count is not None:
+        lines.append(f"- **line_count:** {line_count}")
+    if first_ts is not None or last_ts is not None:
+        lines.append(f"- **first_ts:** {first_ts if first_ts is not None else 'n/a'}")
+        lines.append(f"- **last_ts:** {last_ts if last_ts is not None else 'n/a'}")
+    lines.append("")
+
+    lines.append("## Outcome")
+    lines.append("")
+    lines.append(f"- **status:** `{status}`")
+    lines.append(f"- **confidence:** {conf_s}")
+    lines.append(f"- **incomplete_hits:** {int(incomplete_hits or 0)}")
+    lines.append(f"- **success_hits:** {int(success_hits or 0)}")
+    lines.append("")
+
+    lines.append("## Blockers")
+    lines.append("")
+    if blockers:
+        for b in blockers:
+            lines.append(f"- `{b}`")
+    else:
+        lines.append("_None detected._")
+    lines.append("")
+
+    lines.append("## Goal candidates (redacted)")
+    lines.append("")
+    if candidates:
+        for i, cand in enumerate(candidates, start=1):
+            lines.append(f"### Candidate {i}")
+            lines.append("")
+            lines.append("```")
+            lines.append(str(cand).rstrip())
+            lines.append("```")
+            lines.append("")
+    else:
+        lines.append("_No goal candidates._")
         lines.append("")
 
     return "\n".join(lines)

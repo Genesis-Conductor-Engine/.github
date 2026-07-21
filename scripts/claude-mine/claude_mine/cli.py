@@ -3,6 +3,8 @@
 Commands:
   session <jsonl_path> --out DIR
   scan [--root DIR] [--glob PATTERN] --out DIR
+  goals session <jsonl_path> --out DIR
+  goals scan [--root DIR] [--glob PATTERN] [--all] --out DIR
 
 Exit codes: 0 success, 2 path missing / no sessions, 1 fatal.
 """
@@ -15,10 +17,19 @@ import re
 import sys
 import traceback
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
-from claude_mine.mine import mine_session
-from claude_mine.report import write_json, write_markdown
+from claude_mine.goal_status import (
+    STATUS_NOT_REACHED,
+    STATUS_PARTIAL,
+    classify_goal_outcome,
+)
+from claude_mine.mine import _scan_metadata, mine_session
+from claude_mine.parser import iter_session_texts
+from claude_mine.report import write_goal_markdown, write_json, write_markdown
+
+# Default incomplete filter for goals scan (omit reached/ambient/unknown).
+_INCOMPLETE_STATUSES = frozenset({STATUS_NOT_REACHED, STATUS_PARTIAL})
 
 # UUID v1–v5 style filename used by Claude Code session roots.
 _UUID_JSONL = re.compile(
@@ -87,6 +98,47 @@ def write_session_reports(report: dict, out_dir: Path) -> tuple[Path, Path]:
     return json_path, md_path
 
 
+def classify_session_goal(path: Path) -> dict[str, Any]:
+    """Classify goal outcome for one session jsonl.
+
+    Returns a report dict with session metadata + classifier fields.
+    """
+    p = Path(path)
+    session_id, line_count, first_ts, last_ts = _scan_metadata(p)
+    if not session_id:
+        session_id = p.stem
+    texts = list(iter_session_texts(p))
+    outcome = classify_goal_outcome(texts)
+    return {
+        "session_id": session_id,
+        "path": str(p.resolve()) if p.exists() else str(p),
+        "line_count": line_count,
+        "first_ts": first_ts,
+        "last_ts": last_ts,
+        "status": outcome["status"],
+        "confidence": outcome["confidence"],
+        "incomplete_hits": outcome["incomplete_hits"],
+        "success_hits": outcome["success_hits"],
+        "blockers": list(outcome["blockers"]),
+        "goal_candidates": list(outcome["goal_candidates"]),
+    }
+
+
+def write_goal_reports(report: dict, out_dir: Path) -> tuple[Path, Path]:
+    """Write ``{stem}.json`` and ``{stem}.md`` goal reports under *out_dir*."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = _safe_stem(
+        str(report.get("session_id") or ""),
+        Path(str(report.get("path") or "session")),
+    )
+    json_path = out_dir / f"{stem}.json"
+    md_path = out_dir / f"{stem}.md"
+    write_json(report, json_path)
+    write_goal_markdown(report, md_path)
+    return json_path, md_path
+
+
 def cmd_session(jsonl_path: Path, out_dir: Path) -> int:
     """Mine one session jsonl into --out. Returns exit code."""
     if not jsonl_path.is_file():
@@ -144,6 +196,92 @@ def cmd_scan(root: Path, out_dir: Path, glob_pat: str = "*") -> int:
     return 0
 
 
+def cmd_goals_session(jsonl_path: Path, out_dir: Path) -> int:
+    """Classify goal outcome for one session jsonl into --out. Returns exit code."""
+    if not jsonl_path.is_file():
+        print(f"error: session path missing or not a file: {jsonl_path}", file=sys.stderr)
+        return 2
+    try:
+        report = classify_session_goal(jsonl_path)
+        json_path, md_path = write_goal_reports(report, out_dir)
+    except Exception as exc:  # noqa: BLE001 — CLI fatal boundary
+        print(f"error: failed to classify session goal: {exc}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return 1
+    print(f"status={report.get('status')} confidence={report.get('confidence')}")
+    print(f"wrote {json_path}")
+    print(f"wrote {md_path}")
+    return 0
+
+
+def cmd_goals_scan(
+    root: Path,
+    out_dir: Path,
+    glob_pat: str = "*",
+    *,
+    include_all: bool = False,
+) -> int:
+    """Discover sessions and classify goals; index incomplete by default."""
+    if not root.exists():
+        print(f"error: scan root missing: {root}", file=sys.stderr)
+        return 2
+    if not root.is_dir():
+        print(f"error: scan root is not a directory: {root}", file=sys.stderr)
+        return 2
+
+    sessions = discover_sessions(root, glob_pat=glob_pat)
+    if not sessions:
+        print(f"error: no sessions found under {root}", file=sys.stderr)
+        return 2
+
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        index: list[dict] = []
+        classified = 0
+        for path in sessions:
+            report = classify_session_goal(path)
+            classified += 1
+            status = str(report.get("status") or "")
+            if not include_all and status not in _INCOMPLETE_STATUSES:
+                print(
+                    f"skip {report.get('session_id')} status={status}",
+                )
+                continue
+            json_path, md_path = write_goal_reports(report, out_dir)
+            index.append(
+                {
+                    "session_id": report.get("session_id"),
+                    "path": report.get("path"),
+                    "status": status,
+                    "confidence": report.get("confidence"),
+                    "incomplete_hits": report.get("incomplete_hits"),
+                    "success_hits": report.get("success_hits"),
+                    "blockers": report.get("blockers") or [],
+                    "json": str(json_path),
+                    "markdown": str(md_path),
+                }
+            )
+            print(f"goal {report.get('session_id')} status={status} → {json_path.name}")
+        write_json(
+            {
+                "root": str(root.resolve()),
+                "filter": "all" if include_all else "incomplete",
+                "classified": classified,
+                "sessions": index,
+            },
+            out_dir / "index.json",
+        )
+        print(
+            f"wrote {out_dir / 'index.json'} "
+            f"({len(index)} indexed / {classified} classified)"
+        )
+    except Exception as exc:  # noqa: BLE001 — CLI fatal boundary
+        print(f"error: goals scan failed: {exc}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="claude_mine",
@@ -180,6 +318,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output directory for JSON/Markdown reports (default: ./out)",
     )
 
+    p_goals = sub.add_parser(
+        "goals",
+        help="Classify whether session goals were reached (incomplete inventory)",
+    )
+    goals_sub = p_goals.add_subparsers(dest="goals_command", required=True)
+
+    p_goals_session = goals_sub.add_parser(
+        "session",
+        help="Classify goal outcome for one session jsonl",
+    )
+    p_goals_session.add_argument("jsonl_path", type=Path, help="Path to session .jsonl")
+    p_goals_session.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUT,
+        help="Output directory for JSON/Markdown goal reports (default: ./out)",
+    )
+
+    p_goals_scan = goals_sub.add_parser(
+        "scan",
+        help="Discover sessions and classify goals (incomplete only by default)",
+    )
+    p_goals_scan.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_ROOT,
+        help=f"Projects root (default: {DEFAULT_ROOT})",
+    )
+    p_goals_scan.add_argument(
+        "--glob",
+        dest="glob_pat",
+        default="*",
+        help="fnmatch filter on path relative to root (default: *)",
+    )
+    p_goals_scan.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUT,
+        help="Output directory for JSON/Markdown goal reports (default: ./out)",
+    )
+    p_goals_scan.add_argument(
+        "--all",
+        dest="include_all",
+        action="store_true",
+        help="Index all statuses (default: only not_reached and partial)",
+    )
+
     return parser
 
 
@@ -191,6 +376,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_session(Path(args.jsonl_path), Path(args.out))
     if args.command == "scan":
         return cmd_scan(Path(args.root), Path(args.out), glob_pat=str(args.glob_pat))
+    if args.command == "goals":
+        if args.goals_command == "session":
+            return cmd_goals_session(Path(args.jsonl_path), Path(args.out))
+        if args.goals_command == "scan":
+            return cmd_goals_scan(
+                Path(args.root),
+                Path(args.out),
+                glob_pat=str(args.glob_pat),
+                include_all=bool(args.include_all),
+            )
+        parser.error(f"unknown goals command: {args.goals_command}")
+        return 1
     parser.error(f"unknown command: {args.command}")
     return 1
 

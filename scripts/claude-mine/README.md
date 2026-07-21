@@ -51,6 +51,42 @@ Example filter (posix relative path under root):
 python -m claude_mine scan --root ~/.claude/projects --glob '*-Users-igorholt/*' --out /tmp/scan
 ```
 
+### Goals — incomplete session inventory
+
+Classify whether a session’s stated goal was reached (`reached` | `not_reached` | `partial` | `ambient` | `unknown`) using end-window incomplete/success phrase ratios. Writes only under `--out`.
+
+#### One session
+
+```bash
+python -m claude_mine goals session <jsonl_path> --out DIR
+```
+
+Writes under `DIR/`:
+
+- `{session_id}.json` — status, confidence, blockers, redacted goal candidates
+- `{session_id}.md` — Markdown summary
+
+#### Scan many sessions
+
+```bash
+python -m claude_mine goals scan [--root ~/.claude/projects] [--glob '*'] [--all] --out DIR
+```
+
+- Same UUID discovery as `scan` (skips `subagents/`, non-UUID jsonl)
+- **Default:** indexes and writes only `not_reached` and `partial`
+- **`--all`:** include every status in `index.json` and per-session reports
+- Always classifies all discovered sessions; skipped statuses print `skip …`
+- Writes `index.json` with `filter` (`incomplete` | `all`), `classified` count, and `sessions[]`
+
+Example:
+
+```bash
+python -m claude_mine goals scan \
+  --root ~/.claude/projects \
+  --glob '*-Users-igorholt/*' \
+  --out /tmp/goals-incomplete
+```
+
 ### Exit codes
 
 | Code | Meaning |
@@ -58,6 +94,8 @@ python -m claude_mine scan --root ~/.claude/projects --glob '*-Users-igorholt/*'
 | 0 | Success |
 | 2 | Path missing / no sessions found |
 | 1 | Fatal error |
+
+Applies to both mine (`session` / `scan`) and goals (`goals session` / `goals scan`).
 
 ## Report shape (JSON)
 
@@ -104,14 +142,16 @@ PYTHONPATH=. python -m claude_mine session \
 ```
 claude_mine/
   __main__.py   # python -m entry
-  cli.py        # session / scan
+  cli.py        # session / scan / goals
   mine.py       # mine_session report model
+  goal_status.py # classify_goal_outcome
   parser.py     # jsonl → (role, text)
   extract.py    # addresses + phrase hits
   redact.py     # secret-safe text
   labels.py     # known address book
-  report.py     # write_json / write_markdown
+  report.py     # write_json / write_markdown / write_goal_markdown
 tests/
   fixtures/sample_session.jsonl
+  fixtures/goal_*.jsonl
   test_*.py
 ```
