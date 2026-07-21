@@ -124,6 +124,24 @@ class TestClassifyGoalOutcomeShape(unittest.TestCase):
         self.assertEqual(result["status"], "not_reached")
         self.assertGreater(result["incomplete_hits"], 0)
 
+    def test_thirty_four_of_thirty_four_success_signal(self) -> None:
+        """GC §6 / Task-1 review: 34/34 suite phrases count as success."""
+        phrases = (
+            "34/34",
+            "34/34 passing",
+            "34/34 passing with no gate block",
+        )
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                result = classify_goal_outcome([("assistant", phrase)])
+                self.assertGreater(
+                    result["success_hits"],
+                    0,
+                    f"expected success hit for {phrase!r}",
+                )
+                self.assertEqual(result["status"], "reached")
+                self.assertEqual(result["incomplete_hits"], 0)
+
 
 class TestClassifyFixtures(unittest.TestCase):
     def test_goal_not_reached_fixture(self) -> None:

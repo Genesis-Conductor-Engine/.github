@@ -33,11 +33,14 @@ INCOMPLETE_SIGNALS: tuple[str, ...] = (
 
 # Success / terminal-win signals (case-insensitive). Longer phrases first.
 SUCCESS_SIGNALS: tuple[str, ...] = (
+    "34/34 passing with no gate block",
     "successfully deployed",
     "all tasks complete",
+    "34/34 passing",
     "goal achieved",
     "goal met",
     "merge-ready",
+    "34/34",
 )
 
 # User texts matching these (case-insensitive) become goal_candidates.
