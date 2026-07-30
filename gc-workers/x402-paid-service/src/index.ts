@@ -171,7 +171,7 @@ async function facilitatorPost(endpoint: string, body: unknown, env: Env): Promi
 async function handleTier(
   request: Request,
   env: Env,
-  ctx: ExecutionContext,
+  _ctx: ExecutionContext,
   tier: TierConfig,
 ): Promise<Response> {
   const amount = tier.getAmount(env);
@@ -218,9 +218,42 @@ async function handleTier(
     return payment402(paymentRequired, verifyResult.invalidReason ?? 'Payment invalid');
   }
 
-  // Read body (best-effort)
+  // Read body (best-effort). Safe to read before settlement — it is only echoed
+  // back in the response and never drives payment or fulfillment decisions.
   const body = await request.json().catch(() => ({}));
 
+  // Settle the payment and CONFIRM success BEFORE releasing anything of value.
+  // This previously ran fire-and-forget in ctx.waitUntil(...).catch(console.error),
+  // so the 200 response — including the Shopify fulfillment_url on the $4,999 /
+  // $9,999 tiers — was returned before settlement was confirmed, and any settle
+  // failure was swallowed. That handed over the goods for a verified-but-unsettled
+  // payment. Settlement is now awaited and gates the response: no settle success,
+  // no result.
+  let settleResult: { success?: boolean; errorReason?: string; transaction?: string; network?: string };
+  try {
+    const settleResp = await facilitatorPost('settle', {
+      x402Version: X402_VERSION,
+      paymentPayload,
+      paymentRequirements,
+    }, env);
+
+    if (!settleResp.ok) {
+      const txt = await settleResp.text();
+      console.error(`[settle] facilitator HTTP ${settleResp.status}: ${txt}`);
+      return payment402(paymentRequired, `Settlement failed: ${txt}`);
+    }
+    settleResult = (await settleResp.json()) as typeof settleResult;
+  } catch (e) {
+    console.error(`[settle] request failed: ${String(e)}`);
+    return Response.json({ error: 'Settlement request failed', detail: String(e) }, { status: 502 });
+  }
+
+  if (!settleResult.success) {
+    console.error(`[settle] not settled: ${settleResult.errorReason ?? 'unknown reason'}`);
+    return payment402(paymentRequired, settleResult.errorReason ?? 'Settlement not completed');
+  }
+
+  // Payment is now verified AND settled on-chain — safe to release the result.
   const result = tier.shopifyUrl
     ? {
         success: true,
@@ -228,6 +261,7 @@ async function handleTier(
         fulfillment_url: tier.shopifyUrl(env),
         payer: verifyResult.payer,
         charged_usd6: amount,
+        settlement_tx: settleResult.transaction ?? null,
       }
     : {
         success: true,
@@ -236,16 +270,8 @@ async function handleTier(
         input: body,
         payer: verifyResult.payer,
         charged_usd6: amount,
+        settlement_tx: settleResult.transaction ?? null,
       };
-
-  // Settle in background so response is not blocked
-  ctx.waitUntil(
-    facilitatorPost('settle', {
-      x402Version: X402_VERSION,
-      paymentPayload,
-      paymentRequirements,
-    }, env).catch(console.error),
-  );
 
   return Response.json(result);
 }
