@@ -1,6 +1,61 @@
-# Claude IDE local data — do not commit
-.claude/*
-!.claude/launch.json
+# This repository lives at the home-directory root. Deny new top-level paths by
+# default so credentials, application state, and unrelated repositories cannot
+# become accidental commit candidates. Explicitly allow only the documented
+# Genesis workspace surface; already-tracked paths remain tracked.
+/*
 
-.gemini/
+!/.gitignore
+!/.gitmodules
+!/AGENTS.md
+!/LLMS.txt
+!/copilot-instructions.md
+!/llms.txt
+!/package.json
+!/package-lock.json
+!/vercel.json
+
+!/.claude/
+/.claude/*
+!/.claude/launch.json
+
+!/.claude-plugin/
+/.claude-plugin/*
+!/.claude-plugin/marketplace.json
+
+!/.github/
+!/.github/**
+
+!/docs/
+!/docs/**
+
+!/profile/
+!/profile/**
+
+!/scripts/
+!/scripts/**
+
+!/gc-workers/
+/gc-workers/*
+!/gc-workers/x402-paid-service/
+!/gc-workers/x402-paid-service/**
+!/gc-workers/gc-crew-mcp-bridge/
+!/gc-workers/gc-crew-mcp-bridge/**
+
+# Generated and sensitive files stay ignored even inside allowed directories.
+**/.DS_Store
+**/.claude/
+**/node_modules/
+**/coverage/
+**/.wrangler/
+**/__pycache__/
+**/*.py[cod]
+**/*.bak
+**/*.pre-*
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*token*.txt
+**/*recovery*code*.txt
 gha-creds-*.json
