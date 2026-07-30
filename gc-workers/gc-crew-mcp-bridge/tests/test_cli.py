@@ -25,6 +25,8 @@ from gc_crew_mcp.cli import (
 )
 from gc_crew_mcp.x402_client import (
     DEFAULT_PRICE_USDC6,
+    HEADER_ADMIN_KEY,
+    HEADER_PAYMENT_PROOF,
     RETRAINER_NETWORK,
     RETRAINER_PAY_TO,
 )
@@ -231,6 +233,140 @@ class TestEvolveDry(unittest.TestCase):
         self.assertEqual(code, 0, msg=err)
         result = json.loads(out)
         self.assertEqual(result["status"], "payment_required")
+
+    def test_live_without_proof_exit_2(self) -> None:
+        """--live with trusted base but no proof/admin key must refuse."""
+        # Ensure env auth is not set so the gate fails cleanly.
+        saved_proof = os.environ.pop("X402_PAYMENT_PROOF", None)
+        saved_key = os.environ.pop("X_ADMIN_KEY", None)
+        try:
+            code, out, err = _capture(
+                main,
+                [
+                    "evolve-dry",
+                    "--live",
+                    "--goal-status",
+                    "partial",
+                    "--base-url",
+                    DEFAULT_RETRAINER_BASE,
+                ],
+            )
+        finally:
+            if saved_proof is not None:
+                os.environ["X402_PAYMENT_PROOF"] = saved_proof
+            if saved_key is not None:
+                os.environ["X_ADMIN_KEY"] = saved_key
+        self.assertEqual(code, 2)
+        self.assertEqual(out.strip(), "")
+        self.assertIn("--live", err)
+        self.assertTrue(
+            "payment-proof" in err.lower() or "admin-key" in err.lower() or "X402" in err,
+            msg=err,
+        )
+
+    def test_live_untrusted_base_exit_2(self) -> None:
+        code, _, err = _capture(
+            main,
+            [
+                "evolve-dry",
+                "--live",
+                "--admin-key",
+                "dummy-key",
+                "--base-url",
+                "https://evil.example.com",
+            ],
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("trusted", err.lower())
+
+    def test_live_with_admin_key_uses_injected_transport(self) -> None:
+        captured: dict[str, Any] = {}
+
+        def transport(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            body: dict[str, Any],
+        ) -> tuple[int, dict]:
+            captured["headers"] = headers
+            captured["body"] = body
+            return 200, {"accepted": True}
+
+        code, out, err = _capture(
+            main,
+            [
+                "evolve-dry",
+                "--live",
+                "--admin-key",
+                "TEST_ADMIN",
+                "--goal-status",
+                "partial",
+                "--base-url",
+                DEFAULT_RETRAINER_BASE,
+            ],
+            transport=transport,
+        )
+        self.assertEqual(code, 0, msg=err)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(captured["headers"][HEADER_ADMIN_KEY], "TEST_ADMIN")
+        self.assertNotIn("admin_key", captured["body"])
+        self.assertNotIn(HEADER_PAYMENT_PROOF, captured["headers"])
+
+    def test_live_with_payment_proof_env(self) -> None:
+        def transport(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            body: dict[str, Any],
+        ) -> tuple[int, dict]:
+            self.assertEqual(headers.get(HEADER_PAYMENT_PROOF), "ENV_PROOF")
+            return 402, {
+                "accepts": [
+                    {
+                        "amount": str(DEFAULT_PRICE_USDC6),
+                        "network": RETRAINER_NETWORK,
+                        "payTo": RETRAINER_PAY_TO,
+                    }
+                ]
+            }
+
+        old = os.environ.get("X402_PAYMENT_PROOF")
+        os.environ["X402_PAYMENT_PROOF"] = "ENV_PROOF"
+        try:
+            code, out, err = _capture(
+                main,
+                [
+                    "evolve-dry",
+                    "--live",
+                    "--goal-status",
+                    "partial",
+                ],
+                transport=transport,
+            )
+        finally:
+            if old is None:
+                os.environ.pop("X402_PAYMENT_PROOF", None)
+            else:
+                os.environ["X402_PAYMENT_PROOF"] = old
+
+        self.assertEqual(code, 0, msg=err)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "payment_required")
+
+    def test_untrusted_base_without_live_still_raises_exit_2(self) -> None:
+        """submit_metrics trust gate rejects untrusted base even on mock path."""
+        code, _, err = _capture(
+            cmd_evolve_dry,
+            quality=0.1,
+            latency_ms=0.0,
+            cost_usdc6=0,
+            goal_status="partial",
+            candidate_id=None,
+            base_url="https://evil.example.com",
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("untrusted", err.lower())
 
 
 class TestX402Discover(unittest.TestCase):

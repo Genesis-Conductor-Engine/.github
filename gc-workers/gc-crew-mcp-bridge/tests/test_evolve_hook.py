@@ -192,6 +192,52 @@ class TestSubmitMetrics(unittest.TestCase):
                 transport=lambda *a, **k: (200, {}),
             )
 
+    def test_untrusted_base_url_raises(self) -> None:
+        def transport(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            body: dict,
+        ) -> tuple[int, dict]:
+            raise AssertionError("transport must not be called for untrusted base")
+
+        with self.assertRaises(ValueError) as ctx:
+            submit_metrics(
+                "https://evil.example.com",
+                _sample_metrics(),
+                transport=transport,
+            )
+        self.assertIn("untrusted", str(ctx.exception).lower())
+
+        with self.assertRaises(ValueError) as ctx2:
+            submit_metrics(
+                "https://not-genesis.example.org/admin",
+                _sample_metrics(),
+                transport=transport,
+            )
+        self.assertIn("untrusted", str(ctx2.exception).lower())
+
+    def test_trusted_origin_without_path_accepted(self) -> None:
+        """Path-less trusted origin still passes the is_trusted_url origin gate."""
+        seen: list[str] = []
+
+        def transport(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            body: dict,
+        ) -> tuple[int, dict]:
+            seen.append(url)
+            return 200, {"ok": True}
+
+        result = submit_metrics(
+            "https://optimization-inversion.genesisconductor.io",
+            _sample_metrics(),
+            transport=transport,
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(len(seen), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
