@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .trust import assert_trusted_mcps, filter_tools, is_trusted_url
+from .trust import assert_trusted_mcps, is_trusted_url
 
 # Placeholder MCP endpoint on the ambient host. Real /mcp may 404 until wired;
 # ambient health at .../health is NOT an MCP and must not be used as one.
@@ -68,9 +68,6 @@ def to_crewai_kwargs(spec: AgentSpec) -> dict:
     trusted_mcps = [url for url in spec.mcps if is_trusted_url(url)]
     # Ensure remaining URLs still satisfy policy.
     assert_trusted_mcps(trusted_mcps)
-
-    # Document deny-all-then-allow for allowed_tools (side-effect free check).
-    filter_tools(list(spec.allowed_tools), allowed=set(spec.allowed_tools))
 
     return {
         "role": spec.role,

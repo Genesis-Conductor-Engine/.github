@@ -2,6 +2,8 @@
 
 CrewAI-compatible MCP adapter and trust policy for Genesis Conductor multi-agent crews.
 
+Task 1 restored the home-repo deny-all `.gitignore` surface (required for allowlist `!` lines to work) and un-ignores this package beside `x402-paid-service`.
+
 ## What this is
 
 - **Trust policy** (`gc_crew_mcp.trust`): allowlist trusted MCP hosts, block dangerous tools by default.
@@ -24,7 +26,11 @@ HTTP only (local tests):
 
 `delete`, `deploy`, `secret_put`, `write_file`, `rm`, `drop_table`
 
-Agents use **deny-all-then-allow**: pass an explicit `allowed` set to `filter_tools`.
+Agents use **deny-all-then-allow** via `filter_tools`:
+
+- `allowed=None` → no tools pass (`[]`)
+- `allowed={...}` → only those names, minus blocked
+- custom `blocked=` is **unioned** with `DEFAULT_BLOCKED_TOOLS` (cannot remove defaults)
 
 ## MCP placeholder
 

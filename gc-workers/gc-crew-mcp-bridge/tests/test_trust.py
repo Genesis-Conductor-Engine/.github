@@ -68,9 +68,21 @@ class TestIsTrustedUrl(unittest.TestCase):
 
 
 class TestFilterTools(unittest.TestCase):
+    def test_allowed_none_is_deny_all(self) -> None:
+        names = ["search", "delete", "get_status", "deploy", "list_tools"]
+        self.assertEqual(filter_tools(names), [])
+        self.assertEqual(filter_tools(names, allowed=None), [])
+
+    def test_empty_allowlist_returns_empty(self) -> None:
+        names = ["search", "get_status"]
+        self.assertEqual(filter_tools(names, allowed=set()), [])
+
     def test_blocks_default_dangerous_tools(self) -> None:
         names = ["search", "delete", "get_status", "deploy", "list_tools"]
-        out = filter_tools(names)
+        out = filter_tools(
+            names,
+            allowed={"search", "delete", "get_status", "deploy", "list_tools"},
+        )
         self.assertEqual(out, ["search", "get_status", "list_tools"])
 
     def test_allowlist_intersection(self) -> None:
@@ -83,14 +95,32 @@ class TestFilterTools(unittest.TestCase):
         out = filter_tools(names, allowed={"search", "delete", "deploy"})
         self.assertEqual(out, ["search"])
 
-    def test_custom_blocked(self) -> None:
-        names = ["search", "get_status", "custom_danger"]
+    def test_custom_blocked_unions_defaults(self) -> None:
+        """Custom blocked adds to DEFAULT_BLOCKED_TOOLS; cannot remove defaults."""
+        names = ["search", "get_status", "custom_danger", "delete", "deploy"]
         out = filter_tools(
             names,
-            allowed={"search", "get_status", "custom_danger"},
+            allowed={
+                "search",
+                "get_status",
+                "custom_danger",
+                "delete",
+                "deploy",
+            },
             blocked={"custom_danger"},
         )
+        # custom_danger blocked by caller; delete/deploy still blocked by defaults
         self.assertEqual(out, ["search", "get_status"])
+
+    def test_custom_blocked_cannot_clear_defaults(self) -> None:
+        # Passing blocked that omits defaults must not re-enable delete/deploy.
+        names = ["search", "delete", "deploy"]
+        out = filter_tools(
+            names,
+            allowed={"search", "delete", "deploy"},
+            blocked=set(),
+        )
+        self.assertEqual(out, ["search"])
 
 
 class TestAssertTrustedMcps(unittest.TestCase):

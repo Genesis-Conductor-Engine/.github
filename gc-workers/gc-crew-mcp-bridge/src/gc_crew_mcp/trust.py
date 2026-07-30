@@ -74,19 +74,24 @@ def filter_tools(
 ) -> list[str]:
     """Filter tool names with deny-all-then-allow semantics.
 
-    - Always drop tools in ``blocked`` (defaults to ``DEFAULT_BLOCKED_TOOLS``).
-    - If ``allowed`` is provided, keep only tools in that set (and not blocked).
-    - If ``allowed`` is None, keep all non-blocked tools from ``tool_names``
-      (caller is expected to supply an allowlist for agent specs).
+    - If ``allowed`` is None, return ``[]`` (deny all — no tools pass).
+    - If ``allowed`` is provided, keep only names in that set that are not blocked.
+    - ``blocked`` is always ``DEFAULT_BLOCKED_TOOLS`` unioned with any extra
+      names the caller passes; callers can only add blocks, never remove defaults.
     """
-    blocked_set: set[str] = (
-        set(blocked) if blocked is not None else set(DEFAULT_BLOCKED_TOOLS)
-    )
+    # Deny-all when no explicit allowlist is provided.
+    if allowed is None:
+        return []
+
+    blocked_set: set[str] = set(DEFAULT_BLOCKED_TOOLS)
+    if blocked is not None:
+        blocked_set |= set(blocked)
+
     result: list[str] = []
     for name in tool_names:
         if name in blocked_set:
             continue
-        if allowed is not None and name not in allowed:
+        if name not in allowed:
             continue
         result.append(name)
     return result
