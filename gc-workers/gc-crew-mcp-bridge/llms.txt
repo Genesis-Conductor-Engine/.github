@@ -1,0 +1,36 @@
+# gc-crew-mcp-bridge — Genesis Conductor
+
+> CrewAI-compatible MCP adapter with host trust policy and deny-all-then-allow tools.
+
+## Overview
+
+- **Name**: gc-crew-mcp-bridge
+- **Package**: `gc_crew_mcp`
+- **Python**: 3.11+
+- **Purpose**: Wire Genesis Conductor agents to trusted MCP endpoints without shipping secrets or live payments
+
+## Modules
+
+- `gc_crew_mcp.trust` — `TRUSTED_HOSTS`, `is_trusted_url`, `filter_tools`, `assert_trusted_mcps`, `DEFAULT_BLOCKED_TOOLS`
+- `gc_crew_mcp.agents` — `AgentSpec`, `build_researcher_agent`, `to_crewai_kwargs`
+
+## Trusted MCP hosts
+
+- `optimization-inversion.genesisconductor.io` (https)
+- `fed.genesisconductor.io` (https)
+- `*.genesisconductor.io` (https suffix rule)
+- `localhost` / `127.0.0.1` (http only, tests)
+
+## Default blocked tools
+
+delete, deploy, secret_put, write_file, rm, drop_table
+
+## Placeholder MCP
+
+- MCP (may 404 until wired): `https://optimization-inversion.genesisconductor.io/mcp`
+- Health (not MCP): `https://optimization-inversion.genesisconductor.io/health`
+
+## Related
+
+- Ambient: https://optimization-inversion.genesisconductor.io
+- Org: https://genesisconductor.io

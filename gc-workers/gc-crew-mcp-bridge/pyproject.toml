@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gc-crew-mcp"
+version = "0.1.0"
+description = "CrewAI-compatible MCP adapter with trust policy for Genesis Conductor crews"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Genesis Conductor Engine" }]
+dependencies = []
+
+[project.optional-dependencies]
+crewai = ["crewai>=0.80.0"]
+mcp = ["mcp>=1.0.0"]
+all = ["gc-crew-mcp[crewai,mcp]"]
+
+[project.urls]
+Homepage = "https://genesisconductor.io"
+Health = "https://optimization-inversion.genesisconductor.io/health"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
