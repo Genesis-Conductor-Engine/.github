@@ -1,0 +1,17 @@
+{
+  "schema_version": "2024-11-05",
+  "name": "x402-paid-service",
+  "version": "1.0.0",
+  "description": "USDC micropayment service for AI agent commerce on Base network",
+  "tools": [
+    {
+      "name": "execute_paid_call",
+      "description": "Execute a paid API call with USDC micropayment"
+    }
+  ],
+  "contact": {
+    "name": "Kovach Enterprises",
+    "email": "api@kovachenterprises.com",
+    "url": "https://genesisconductor.io"
+  }
+}

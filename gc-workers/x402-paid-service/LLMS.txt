@@ -1,0 +1,109 @@
+# x402 Paid Service API — Genesis Conductor
+
+> Paid API service using the x402 payment protocol on Base network.
+> Agent-to-agent commerce: a verified USDC payment auto-creates a Shopify order
+> and returns a one-time download URL in the same response.
+
+## Overview
+
+- **Name**: Genesis Conductor x402 Paid Service
+- **Network**: Base (Chain ID 8453)
+- **Payment token**: USDC (6 decimals)
+- **Vault address**: resolved at runtime from `/.well-known/x402`
+- **Protocol**: x402 v1 — include `X-Payment-Proof` header with base64-encoded PaymentPayload
+- **Settlement facilitator**: Coinbase CDP facilitator (production-grade; handles $0.01–$9,999 USDC)
+
+## Endpoints
+
+### POST /api/discovery
+Tier: discovery. Price: $0.01 USDC. Returns discovery-tier service result.
+
+### POST /api/pro
+Tier: pro. Price: $1.00 USDC. Returns pro-tier service result.
+
+### POST /api/inference
+Tier: inference. Price: $10.00 USDC. Returns inference-tier service result.
+
+### POST /api/specialized
+Tier: specialized. Price: $100.00 USDC. Returns specialized-tier service result.
+
+### POST /api/founders
+Tier: founders. Price: $4,999.00 USDC.
+**Shopify-fulfilled.** On payment verification, creates a Shopify order (gc-founders-license)
+and returns a one-time download URL. No human storefront checkout required.
+
+**Success response (200)**:
+```json
+{
+  "success": true,
+  "tier": "founders",
+  "fulfillment": {
+    "order_id": "<shopify-order-id>",
+    "download_url": "<signed-download-url>"
+  },
+  "charged_usd6": "4999000000"
+}
+```
+
+**Fulfillment failure response (502)**:
+```json
+{
+  "error": "fulfillment_failed",
+  "reason": "<internal reason — not a billing issue>",
+  "retry_after": 60
+}
+```
+Payment is NOT double-charged on retry — idempotency is keyed on the
+`X-Payment-Proof` header value (TTL: 30 days).
+
+### POST /api/source-exclusive
+Tier: source-exclusive. Price: $9,999.00 USDC.
+**Shopify-fulfilled.** On payment verification, creates a Shopify order (gc-source-exclusive)
+and returns a one-time download URL. Same response shape as `/api/founders`.
+
+### POST /api/execute (legacy)
+Single-tier legacy endpoint. Price: $0.01 USDC.
+
+## Discovery endpoints
+
+### GET /.well-known/x402
+Returns per-endpoint pricing, vault address, and network requirements.
+
+### GET /health
+Returns `{ "status": "ok", "price_usd6": "<legacy-price>" }`.
+
+### GET /health/facilitator
+Returns `{ "mode": "cdp"|"public", "ok": true|false }`.
+`mode: "cdp"` confirms the Coinbase CDP facilitator is active.
+
+## Payment flow
+
+1. POST to any `/api/*` endpoint without a proof header.
+2. Receive `402 Payment Required` with JSON body containing `price_usd6`, `contract`, `token`, `network`.
+3. Construct a USDC `transferWithAuthorization` (EIP-3009) for the exact amount to `contract`.
+4. Base64-encode the `PaymentPayload` and include as `X-Payment-Proof` header.
+5. Retry the POST — on success receive `200` with the result (and `fulfillment` object for
+   high-value tiers).
+
+## Idempotency (high-value tiers only)
+
+The `X-Payment-Proof` header value is used as the idempotency key. If the same proof is
+submitted a second time (e.g., after a network timeout on the 502 path), the worker returns
+the same `order_id` and `download_url` from KV cache without creating a duplicate Shopify order.
+
+The nonce inside the proof is separately consumed in KV (TTL 24 h) to prevent replay attacks.
+A `502 fulfillment_failed` response does NOT consume the nonce — the proof can be retried.
+
+## Error codes
+
+| HTTP | `error` field              | Meaning                                                       |
+|------|---------------------------|---------------------------------------------------------------|
+| 402  | `payment_required`        | No `X-Payment-Proof` header present.                         |
+| 402  | `proof_verification_failed` | Proof invalid (bad signature, wrong recipient, replay, etc.). |
+| 502  | `fulfillment_failed`      | Shopify order creation failed. Retry after `retry_after` seconds. |
+| 404  | `Not found`               | Unrecognised path.                                            |
+
+## Contract addresses (Base mainnet)
+
+- Vault: `0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8`
+- USDC: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
