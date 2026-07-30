@@ -15,7 +15,8 @@ dependencies = []
 [project.optional-dependencies]
 crewai = ["crewai>=0.80.0"]
 mcp = ["mcp>=1.0.0"]
-all = ["gc-crew-mcp[crewai,mcp]"]
+logfire = ["logfire>=2.0"]
+all = ["gc-crew-mcp[crewai,mcp,logfire]"]
 
 [project.urls]
 Homepage = "https://genesisconductor.io"

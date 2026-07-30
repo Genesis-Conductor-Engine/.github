@@ -17,6 +17,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from gc_crew_mcp.metrics import RunMetrics, to_ralph_payload
+from gc_crew_mcp.observability import span
 from gc_crew_mcp.x402_client import (
     ADMIN_SLICES_PATH,
     build_admin_request,
@@ -80,28 +81,41 @@ def submit_metrics(
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"base_url must be http(s), got scheme={parsed.scheme!r}")
 
-    payload = to_ralph_payload(metrics)
-    # Defense in depth: strip any accidental secret-like keys from payload.
-    for forbidden in ("payment_proof", "admin_key", "private_key", "secret", "mnemonic"):
-        payload.pop(forbidden, None)
+    # Never pass payment_proof / admin_key into span attributes.
+    with span(
+        "evolve.submit_metrics",
+        base_host=parsed.hostname or "",
+        goal_status=metrics.goal_status,
+        candidate_id=metrics.candidate_id,
+    ):
+        payload = to_ralph_payload(metrics)
+        # Defense in depth: strip any accidental secret-like keys from payload.
+        for forbidden in (
+            "payment_proof",
+            "admin_key",
+            "private_key",
+            "secret",
+            "mnemonic",
+        ):
+            payload.pop(forbidden, None)
 
-    url, headers = build_admin_request(
-        base_url,
-        ADMIN_SLICES_PATH,
-        payment_proof=payment_proof,
-        admin_key=admin_key,
-    )
-    xport: Transport = transport if transport is not None else _default_transport
-    status, body = xport("POST", url, headers, payload)
-    kind = classify_response(status, body if isinstance(body, dict) else None)
+        url, headers = build_admin_request(
+            base_url,
+            ADMIN_SLICES_PATH,
+            payment_proof=payment_proof,
+            admin_key=admin_key,
+        )
+        xport: Transport = transport if transport is not None else _default_transport
+        status, body = xport("POST", url, headers, payload)
+        kind = classify_response(status, body if isinstance(body, dict) else None)
 
-    if kind == "ok":
-        return {"status": "ok", "body": body if isinstance(body, dict) else {}}
-    if kind == "payment_required":
-        x402 = parse_402_body(body if isinstance(body, dict) else {})
-        return {"status": "payment_required", "x402": x402}
-    return {
-        "status": "error",
-        "http_status": status,
-        "body": body if isinstance(body, dict) else {},
-    }
+        if kind == "ok":
+            return {"status": "ok", "body": body if isinstance(body, dict) else {}}
+        if kind == "payment_required":
+            x402 = parse_402_body(body if isinstance(body, dict) else {})
+            return {"status": "payment_required", "x402": x402}
+        return {
+            "status": "error",
+            "http_status": status,
+            "body": body if isinstance(body, dict) else {},
+        }
