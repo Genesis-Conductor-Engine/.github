@@ -14,6 +14,9 @@
 - `gc_crew_mcp.trust` — `TRUSTED_HOSTS`, `is_trusted_url`, `filter_tools`, `assert_trusted_mcps`, `DEFAULT_BLOCKED_TOOLS`
 - `gc_crew_mcp.agents` — `AgentSpec`, `build_researcher_agent`, `to_crewai_kwargs`
 - `gc_crew_mcp.crew_topology` — `Domain`, `CREW_ROSTER`, `domains_conflict`, `validate_roster`, `parallel_dispatch_plan`
+- `gc_crew_mcp.metrics` — `RunMetrics`, `validate_goal_status`, `to_ralph_payload`
+- `gc_crew_mcp.x402_client` — `DEFAULT_PRICE_USDC6`, `parse_402_body`, `build_admin_request`, `classify_response`, `fetch_well_known`
+- `gc_crew_mcp.evolve_hook` — `submit_metrics` (injectable transport; no live pay in tests)
 
 ## Trusted MCP hosts
 

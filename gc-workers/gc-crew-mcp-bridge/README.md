@@ -9,6 +9,7 @@ Task 1 restored the home-repo deny-all `.gitignore` surface (required for allowl
 - **Trust policy** (`gc_crew_mcp.trust`): allowlist trusted MCP hosts, block dangerous tools by default.
 - **Agent specs** (`gc_crew_mcp.agents`): declarative `AgentSpec` + `to_crewai_kwargs` for CrewAI (or pure-stdlib fallback when `crewai` is not installed).
 - **Crew topology** (`gc_crew_mcp.crew_topology`): multi-domain roster with isolation (`Domain`, `CREW_ROSTER`, `validate_roster`, `parallel_dispatch_plan`).
+- **Evolve metrics** (`gc_crew_mcp.metrics`, `evolve_hook`, `x402_client`): `RunMetrics` → Ralph payload → `POST /admin/slices` with x402 402 awareness (mock transport in tests; no live pay).
 
 ## Crew topology (domain isolation)
 
@@ -73,6 +74,37 @@ Optional extras:
 pip install -e ".[crewai]"   # optional; adapter works without it
 pip install -e ".[mcp]"
 ```
+
+## Evolve hook (Domain C)
+
+```python
+from gc_crew_mcp import RunMetrics, submit_metrics
+
+metrics = RunMetrics(
+    quality=0.9,
+    latency_ms=120.0,
+    cost_usdc6=0,
+    goal_status="partial",  # reached|not_reached|partial|ambient|unknown
+    candidate_id=None,
+)
+
+# Dry-run: inject transport — never live-pay in unit tests.
+def mock_transport(method, url, headers, body):
+    return 402, {"accepts": [{"amount": "10000", "network": "eip155:8453",
+                              "payTo": "0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8"}]}
+
+result = submit_metrics(
+    "https://optimization-inversion.genesisconductor.io",
+    metrics,
+    transport=mock_transport,
+)
+# result["status"] in {"ok", "payment_required", "error"}
+```
+
+x402 contract constants: `DEFAULT_PRICE_USDC6=10000` ($0.01), network `eip155:8453`,
+payTo vault documented in `x402_client`. Auth headers only: `X-Payment-Proof`, `x-admin-key`.
+
+See operator runbook: `docs/superpowers/plans/GC_CREW_MCP_EVOLVE_RUNBOOK.md`.
 
 ## Env var names only (no secrets in repo)
 
