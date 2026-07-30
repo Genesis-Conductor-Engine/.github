@@ -1,0 +1,10 @@
+node_modules
+.wrangler
+coverage
+.remember
+.git
+*.log
+.DS_Store
+bazaar-listing.json.bak
+wrangler.toml.pre-usdc-fix
+src/**/*.test.ts

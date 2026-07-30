@@ -1,5 +1,11 @@
 import { encodePaymentRequiredHeader, decodePaymentSignatureHeader } from '@x402/core/http';
 import { createAuthHeader, createCorrelationHeader } from '@coinbase/x402';
+import type {
+  ExecutionContext,
+  ScheduledEvent,
+  KVNamespace,
+  AnalyticsEngineDataset,
+} from './runtime-types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const X402_VERSION = 2;

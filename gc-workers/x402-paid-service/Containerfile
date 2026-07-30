@@ -1,0 +1,31 @@
+# Podman/OCI image for the x402 paid service running as a Node service.
+# Build:  podman build -t x402-paid-service .
+# Run:    see DEPLOY-PODMAN.md (secrets are mounted at /run/secrets/<name>).
+
+FROM docker.io/library/node:22-slim
+
+WORKDIR /app
+
+# Install runtime dependencies only. tsx is a runtime dependency (the service is
+# run directly from TypeScript via tsx), so --omit=dev keeps it while dropping
+# typescript / @types/node / vitest / wrangler.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Application sources. tsx transpiles on the fly; no build step or dist/.
+COPY tsconfig.json ./
+COPY src ./src
+COPY public ./public
+
+ENV NODE_ENV=production
+ENV PORT=8080
+EXPOSE 8080
+
+# Drop privileges — the node:slim image ships a non-root `node` user.
+USER node
+
+# Liveness: the free /health route makes no external calls.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["npx", "tsx", "src/server.ts"]
