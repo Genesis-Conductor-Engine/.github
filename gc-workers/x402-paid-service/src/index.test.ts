@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ExecutionContext, ScheduledEvent } from './runtime-types';
 
 const httpMocks = vi.hoisted(() => ({
   encodePaymentRequiredHeader: vi.fn(() => 'encoded-payment-required'),
@@ -416,7 +417,7 @@ describe('x402 Worker paid tier routes', () => {
         paymentPayload: { signed: 'signed-payment' },
         paymentRequirements: { amount: '10000', payTo: VAULT },
       });
-      return Response.json({ settled: true });
+      return Response.json({ success: true, transaction: '0xSettleTx' });
     });
 
     const { response, ctx } = await dispatch('/api/execute', {
@@ -437,7 +438,9 @@ describe('x402 Worker paid tier routes', () => {
     });
     await Promise.all(ctx.pending);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+    // Settlement is now awaited and gates the response, not fire-and-forget via
+    // waitUntil (see the settle-before-dispatch fix + settle-gate.test.ts).
+    expect(ctx.waitUntil).not.toHaveBeenCalled();
   });
 
   it('returns Shopify fulfillment details and USDC charges for premium paid tiers', async () => {
@@ -445,7 +448,7 @@ describe('x402 Worker paid tier routes', () => {
       if (String(input).endsWith('/verify')) {
         return Response.json({ isValid: true, payer: '0xFounder' });
       }
-      return Response.json({ settled: true });
+      return Response.json({ success: true, transaction: '0xFounderSettle' });
     });
 
     const { response, ctx } = await dispatch('/api/founders', {

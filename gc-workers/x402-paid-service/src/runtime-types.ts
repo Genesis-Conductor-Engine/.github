@@ -24,6 +24,12 @@ export interface ScheduledEvent {
   cron: string;
 }
 
-// Declared in Env but unused by the handler; kept for shape compatibility.
+// KVNamespace is declared in Env but unused by the handler.
 export type KVNamespace = unknown;
-export type AnalyticsEngineDataset = unknown;
+
+// AnalyticsEngineDataset is used optionally (env.ANALYTICS?.writeDataPoint) to
+// record settled payments. In the Cloudflare deployment the real binding is
+// present; in Node it is simply absent and the optional chain no-ops.
+export interface AnalyticsEngineDataset {
+  writeDataPoint(event: { blobs?: string[]; doubles?: number[]; indexes?: string[] }): void;
+}

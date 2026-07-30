@@ -141,9 +141,14 @@ describe('settle gates the response', () => {
     const { response } = await paidPost('/api/execute');
 
     expect(response.status).toBe(402);
-    const raw = await response.text();
-    expect(raw).not.toContain('"success":true');
-    expect(raw).not.toContain('settlement_tx');
+    // Assert the TOP-LEVEL result fields, not substrings: the 402 challenge body
+    // embeds a Bazaar discovery-extension example that legitimately contains
+    // "success":true, so a substring check would false-positive. What must never
+    // appear is an actual settled result.
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.success).not.toBe(true);
+    expect(body.settlement_tx).toBeUndefined();
+    expect(body.fulfillment_url).toBeUndefined();
   });
 
   it('returns 402 and leaks NO fulfillment_url when settle fails on a Shopify tier', async () => {
@@ -154,9 +159,10 @@ describe('settle gates the response', () => {
     const { response } = await paidPost('/api/founders');
 
     expect(response.status).toBe(402);
-    const raw = await response.text();
-    expect(raw).not.toContain('shop.example/founders');
-    expect(raw).not.toContain('fulfillment_url');
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.success).not.toBe(true);
+    expect(body.fulfillment_url).toBeUndefined();
+    expect(body.settlement_tx).toBeUndefined();
   });
 
   it('returns 502 and no result when the settle request itself throws', async () => {

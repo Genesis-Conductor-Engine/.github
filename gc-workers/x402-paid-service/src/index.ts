@@ -1,5 +1,7 @@
 import { encodePaymentRequiredHeader, decodePaymentSignatureHeader } from '@x402/core/http';
-import { createAuthHeader, createCorrelationHeader } from '@coinbase/x402';
+import { createCorrelationHeader } from '@coinbase/x402';
+import { declareDiscoveryExtension } from '@x402/extensions';
+import nacl from 'tweetnacl';
 import type {
   ExecutionContext,
   ScheduledEvent,
@@ -8,14 +10,61 @@ import type {
 } from './runtime-types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+// ── Custom JWT Generation for Cloudflare Workers ────────────────────────────
+
+function base64urlEncode(buffer: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...Array.from(buffer)));
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function generateNonce(): string {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+async function createCdpAuthHeader(
+  apiKeyId: string,
+  apiKeySecret: string,
+  requestMethod: string,
+  requestHost: string,
+  requestPath: string,
+): Promise<string> {
+  const fullKeyB64 = apiKeySecret.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = fullKeyB64.padEnd(Math.ceil(fullKeyB64.length / 4) * 4, '=');
+  let fullKeyBytes: Uint8Array;
+  try {
+    fullKeyBytes = new Uint8Array(atob(padded).split('').map(c => c.charCodeAt(0)));
+  } catch (e) {
+    throw new Error(`Failed to decode key: ${e}`);
+  }
+  if (fullKeyBytes.length !== 64) {
+    throw new Error(`Invalid Ed25519 key length: ${fullKeyBytes.length} (expected 64)`);
+  }
+  const seed = fullKeyBytes.slice(0, 32);
+  const keyPair = nacl.sign.keyPair.fromSeed(seed);
+  const header = { alg: 'EdDSA', typ: 'JWT', kid: apiKeyId, nonce: generateNonce() };
+  const now = Math.floor(Date.now() / 1000);
+  const uri = `${requestMethod} ${requestHost}${requestPath}`;
+  const payload = { sub: apiKeyId, iss: 'cdp', aud: ['cdp_service'], nbf: now, exp: now + 120, uri };
+  const encodedHeader = base64urlEncode(new TextEncoder().encode(JSON.stringify(header)));
+  const encodedPayload = base64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const message = new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`);
+  const signature = nacl.sign.detached(message, keyPair.secretKey);
+  const encodedSignature = base64urlEncode(signature);
+  return `Bearer ${encodedHeader}.${encodedPayload}.${encodedSignature}`;
+}
 const X402_VERSION = 2;
 const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const NETWORK = 'eip155:8453';
+const NETWORK_POLYGON = 'eip155:137';
 const MAX_TIMEOUT_SECONDS = 60;
 const PUBLIC_FACILITATOR = 'https://x402.org/facilitator';
 const CDP_FACILITATOR = 'https://api.cdp.coinbase.com/platform/v2/x402';
 const CDP_FACILITATOR_HOST = 'api.cdp.coinbase.com';
 const CDP_FACILITATOR_PATH = '/platform/v2/x402';
+const ETH_SETTLEMENT_ENABLED: boolean = true;
 
 // ── Env types ─────────────────────────────────────────────────────────────────
 interface Env {
@@ -32,88 +81,295 @@ interface Env {
   TIER_SPECIALIZED_USD6: string;
   TIER_FOUNDERS_USD6: string;
   TIER_SOURCE_EXCLUSIVE_USD6: string;
+  // ETH pricing tiers (wei)
+  TIER_DISCOVERY_ETH_WEI: string;
+  TIER_PRO_ETH_WEI: string;
+  TIER_INFERENCE_ETH_WEI: string;
+  TIER_SPECIALIZED_ETH_WEI: string;
+  TIER_FOUNDERS_ETH_WEI: string;
+  TIER_SOURCE_EXCLUSIVE_ETH_WEI: string;
+  // Solana config
+  SOLANA_USDC_MINT: string;
+  SOLANA_RPC_URL: string;
+  SOLANA_NETWORK: string;
   SHOPIFY_FOUNDERS_URL: string;
   SHOPIFY_SOURCE_EXCLUSIVE_URL: string;
   SHOPIFY_STORE_DOMAIN: string;
   CDP_API_KEY_ID?: string;
   CDP_API_KEY_SECRET?: string;
-  // Gas monitoring
-  BASE_RPC_URL?: string;
+  // Gas monitoring + Alchemy (Base RPC secret; optional key for Solana RPC)
+  ALCHEMY_BASE_RPC_URL?: string;
+  ALCHEMY_API_KEY?: string;
   MAIN_WALLET?: string;
   GAS_ALERT_WEBHOOK?: string;
+}
+
+/** Prefer configured Solana RPC; fall back to Alchemy Solana if key present. */
+function resolveSolanaRpcUrl(env: Env): string {
+  if (env.SOLANA_RPC_URL && !env.SOLANA_RPC_URL.includes('api.mainnet-beta.solana.com')) {
+    return env.SOLANA_RPC_URL;
+  }
+  if (env.ALCHEMY_API_KEY) {
+    return `https://solana-mainnet.g.alchemy.com/v2/${env.ALCHEMY_API_KEY}`;
+  }
+  return env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 }
 
 // ── Tier configuration ────────────────────────────────────────────────────────
 interface TierConfig {
   path: string;
   getAmount: (env: Env) => string;
+  getEthAmount: (env: Env) => string;
   description: string;
   displayPrice: string;
+  asset: string;
+  ethAsset: string;
   shopifyUrl?: (env: Env) => string;
 }
+
+const ETH_PRICING_ENABLED = (_env: Env): boolean => ETH_SETTLEMENT_ENABLED;
 
 const TIERS: TierConfig[] = [
   {
     path: '/api/execute',
     getAmount: (e) => e.TIER_DISCOVERY_USD6,
+    getEthAmount: (e) => e.TIER_DISCOVERY_ETH_WEI,
     description: 'Discovery tier — generic paid API call',
     displayPrice: '$0.01',
+    asset: USDC_BASE,
+    ethAsset: 'native',
   },
   {
     path: '/api/pro',
     getAmount: (e) => e.TIER_PRO_USD6,
+    getEthAmount: (e) => e.TIER_PRO_ETH_WEI,
     description: 'Pro tier — premium paid API access',
     displayPrice: '$1.00',
+    asset: USDC_BASE,
+    ethAsset: 'native',
   },
   {
     path: '/api/inference',
     getAmount: (e) => e.TIER_INFERENCE_USD6,
+    getEthAmount: (e) => e.TIER_INFERENCE_ETH_WEI,
     description: 'Inference tier — AI inference workloads',
     displayPrice: '$10.00',
+    asset: USDC_BASE,
+    ethAsset: 'native',
   },
   {
     path: '/api/specialized',
     getAmount: (e) => e.TIER_SPECIALIZED_USD6,
+    getEthAmount: (e) => e.TIER_SPECIALIZED_ETH_WEI,
     description: 'Specialized data tier',
     displayPrice: '$100.00',
+    asset: USDC_BASE,
+    ethAsset: 'native',
   },
   {
     path: '/api/founders',
     getAmount: (e) => e.TIER_FOUNDERS_USD6,
+    getEthAmount: (e) => e.TIER_FOUNDERS_ETH_WEI,
     description: 'Genesis Conductor Founders License — agent-to-agent checkout',
     displayPrice: '$4,999',
+    asset: USDC_BASE,
+    ethAsset: 'native',
     shopifyUrl: (e) => e.SHOPIFY_FOUNDERS_URL,
   },
   {
     path: '/api/source-exclusive',
     getAmount: (e) => e.TIER_SOURCE_EXCLUSIVE_USD6,
+    getEthAmount: (e) => e.TIER_SOURCE_EXCLUSIVE_ETH_WEI,
     description: 'Genesis Conductor Source Exclusive — one source-exclusive plugin',
     displayPrice: '$9,999',
+    asset: USDC_BASE,
+    ethAsset: 'native',
     shopifyUrl: (e) => e.SHOPIFY_SOURCE_EXCLUSIVE_URL,
   },
 ];
 
+// ── Solana USDC helpers ─────────────────────────────────────────────────────
+
+const SOLANA_USDC_MINT_DEFAULT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
+async function verifySolanaUsdcTransfer(
+  signature: string,
+  expectedAmount: string,
+  expectedRecipient: string,
+  env: Env,
+): Promise<{ isValid: boolean; payer?: string; error?: string }> {
+  const rpcUrl = resolveSolanaRpcUrl(env);
+  const usdcMint = env.SOLANA_USDC_MINT || SOLANA_USDC_MINT_DEFAULT;
+
+  try {
+    // Fetch transaction details
+    const resp = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getTransaction',
+        params: [
+          signature,
+          { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 },
+        ],
+      }),
+    });
+
+    const json = (await resp.json()) as {
+      result?: {
+        transaction?: {
+          message?: {
+            accountKeys?: Array<{ pubkey: string; signer?: boolean }>;
+            instructions?: Array<{
+              parsed?: {
+                type?: string;
+                info?: {
+                  source?: string;
+                  destination?: string;
+                  amount?: string;
+                  mint?: string;
+                  authority?: string;
+                };
+              };
+            }>;
+          };
+        };
+        meta?: { err?: unknown };
+      };
+      error?: { message: string };
+    };
+
+    if (!json.result?.transaction) {
+      return { isValid: false, error: 'Transaction not found' };
+    }
+
+    if (json.result.meta?.err) {
+      return { isValid: false, error: 'Transaction failed on-chain' };
+    }
+
+    const instructions = json.result.transaction.message?.instructions || [];
+    const accountKeys = json.result.transaction.message?.accountKeys || [];
+
+    // Find USDC transfer instruction
+    for (const ix of instructions) {
+      if (ix.parsed?.type === 'transfer' && ix.parsed?.info) {
+        const info = ix.parsed.info;
+        if (info.mint === usdcMint && info.destination === expectedRecipient) {
+          // Verify amount (USDC has 6 decimals)
+          const amountMicroUsdc = BigInt(info.amount || '0');
+          const expectedMicroUsdc = BigInt(expectedAmount);
+          if (amountMicroUsdc >= expectedMicroUsdc) {
+            const payer = info.source || accountKeys.find((k) => k.signer)?.pubkey || 'unknown';
+            return { isValid: true, payer };
+          }
+          return { isValid: false, error: `Amount mismatch: got ${info.amount}, expected ${expectedAmount}` };
+        }
+      }
+    }
+
+    return { isValid: false, error: 'No matching USDC transfer found in transaction' };
+  } catch (e) {
+    return { isValid: false, error: `Solana RPC error: ${String(e)}` };
+  }
+}
+
 // ── x402 helpers ──────────────────────────────────────────────────────────────
 
-function buildPaymentRequired(requestUrl: string, amount: string, payTo: string, asset: string, description: string) {
+function buildPaymentRequired(requestUrl: string, amount: string, payTo: string, asset: string, description: string, ethAmount?: string) {
+  // Bazaar discovery (v2 extensions field, official SDK)
+  const discovery = declareDiscoveryExtension({
+    bodyType: 'json',
+    input: {},
+    inputSchema: { type: 'object', additionalProperties: true },
+    output: {
+      example: {
+        success: true,
+        payer: '0x0000000000000000000000000000000000dEaD',
+        payment_asset: 'USDC',
+      },
+    },
+  });
+
+  const primaryAccept = {
+    scheme: 'exact' as const,
+    network: NETWORK,
+    asset,
+    amount,
+    payTo,
+    maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
+    extra: {
+      name: 'USD Coin',
+      version: '2',
+    },
+    outputSchema: {
+      input: {
+        type: 'http' as const,
+        method: 'POST' as const,
+        discoverable: true,
+        body: { type: 'object' as const, additionalProperties: true },
+      },
+    },
+  };
+
+  const accepts: Array<typeof primaryAccept> = [primaryAccept];
+
+  // Add Polygon USDC acceptance
+  accepts.push({
+    scheme: 'exact' as const,
+    network: NETWORK_POLYGON,
+    asset,
+    amount,
+    payTo,
+    maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
+    extra: {
+      name: 'USD Coin',
+      version: '2',
+    },
+    outputSchema: {
+      input: {
+        type: 'http' as const,
+        method: 'POST' as const,
+        discoverable: true,
+        body: { type: 'object' as const, additionalProperties: true },
+      },
+    },
+  });
+
+  // Add ETH acceptance if enabled and amount provided
+  if (ETH_SETTLEMENT_ENABLED && ethAmount) {
+    accepts.push({
+      scheme: 'exact' as const,
+      network: NETWORK,
+      asset: 'native',
+      amount: ethAmount,
+      payTo,
+      maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
+      extra: {
+        name: 'Ether',
+        version: '1',
+      },
+      outputSchema: {
+        input: {
+          type: 'http' as const,
+          method: 'POST' as const,
+          discoverable: true,
+          body: { type: 'object' as const, additionalProperties: true },
+        },
+      },
+    });
+  }
+
   return {
     x402Version: X402_VERSION,
-    accepts: [
-      {
-        scheme: 'exact',
-        network: NETWORK,
-        asset,
-        amount,
-        payTo,
-        maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
-        extra: {},
-      },
-    ],
+    accepts,
     resource: {
       url: requestUrl,
       description,
       mimeType: 'application/json',
     },
+    extensions: discovery,
   };
 }
 
@@ -131,22 +387,12 @@ function payment402(paymentRequired: ReturnType<typeof buildPaymentRequired>, er
 
 /**
  * Posts to the configured facilitator.
- *
- * When CDP_API_KEY_ID and CDP_API_KEY_SECRET are present in env, requests are
- * routed through the Coinbase CDP facilitator (https://api.cdp.coinbase.com/platform/v2/x402)
- * with a per-request JWT in the Authorization header so high-tier settlements
- * ($4,999 / $9,999) are handled production-grade.
- *
- * Falls back to the public x402.org facilitator when the CDP keys are absent.
- * Keys are always read from env (never from process.env) so the Cloudflare
- * Workers runtime can supply them as encrypted secrets.
  */
 async function facilitatorPost(endpoint: string, body: unknown, env: Env): Promise<Response> {
   const useCdp = Boolean(env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET);
 
   if (useCdp) {
-    // JWT expires in ~120 s — generate fresh per-request.
-    const authHeader = await createAuthHeader(
+    const authHeader = await createCdpAuthHeader(
       env.CDP_API_KEY_ID!,
       env.CDP_API_KEY_SECRET!,
       'POST',
@@ -164,7 +410,6 @@ async function facilitatorPost(endpoint: string, body: unknown, env: Env): Promi
     });
   }
 
-  // Public facilitator fallback (rate-limited, unsuitable for high-value tiers).
   return fetch(`${PUBLIC_FACILITATOR}/${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -180,21 +425,37 @@ async function handleTier(
   _ctx: ExecutionContext,
   tier: TierConfig,
 ): Promise<Response> {
-  const amount = tier.getAmount(env);
-  const asset = env.USDC_ADDRESS || USDC_BASE;
+  const primaryAmount = tier.getAmount(env);
+  const primaryAsset = tier.asset || env.USDC_ADDRESS || USDC_BASE;
+  const ethAmount = tier.getEthAmount(env);
   const payTo = env.VAULT_ADDRESS;
+  const requestedPaymentAsset = request.headers.get('X-PAYMENT-ASSET')?.trim().toUpperCase();
+  const ethPricingEnabled = ETH_PRICING_ENABLED(env);
+  const requestedEth = requestedPaymentAsset === 'ETH' || requestedPaymentAsset === 'WETH';
+  
+  if (requestedEth && !ethPricingEnabled) {
+    return Response.json(
+      { error: `Payment asset ${requestedPaymentAsset} is disabled; USDC is required` },
+      { status: 400 },
+    );
+  }
+  if (requestedPaymentAsset && requestedPaymentAsset !== 'USDC' && !requestedEth) {
+    return Response.json({ error: `Unsupported payment asset: ${requestedPaymentAsset}` }, { status: 400 });
+  }
+  
+  // Use ETH amount if requested and enabled
+  const amount = requestedEth ? ethAmount : primaryAmount;
+  const asset = requestedEth ? 'native' : primaryAsset;
 
-  const paymentRequired = buildPaymentRequired(request.url, amount, payTo, asset, tier.description);
+  const paymentRequired = buildPaymentRequired(request.url, amount, payTo, asset, tier.description, ethAmount);
   const paymentRequirements = paymentRequired.accepts[0];
 
-  // Clients may use PAYMENT-SIGNATURE (v2) or X-PAYMENT (v1 legacy)
   const sigHeader = request.headers.get('PAYMENT-SIGNATURE') ?? request.headers.get('X-PAYMENT');
 
   if (!sigHeader) {
     return payment402(paymentRequired);
   }
 
-  // Decode payment payload
   let paymentPayload: unknown;
   try {
     paymentPayload = decodePaymentSignatureHeader(sigHeader);
@@ -202,7 +463,6 @@ async function handleTier(
     return Response.json({ error: 'Invalid payment signature' }, { status: 400 });
   }
 
-  // Verify with facilitator
   let verifyResult: { isValid: boolean; invalidReason?: string; payer?: string };
   try {
     const verifyResp = await facilitatorPost('verify', {
@@ -224,25 +484,43 @@ async function handleTier(
     return payment402(paymentRequired, verifyResult.invalidReason ?? 'Payment invalid');
   }
 
-  // Read body (best-effort). Safe to read before settlement — it is only echoed
-  // back in the response and never drives payment or fulfillment decisions.
   const body = await request.json().catch(() => ({}));
 
-  // Settle the payment and CONFIRM success BEFORE releasing anything of value.
-  // This previously ran fire-and-forget in ctx.waitUntil(...).catch(console.error),
-  // so the 200 response — including the Shopify fulfillment_url on the $4,999 /
-  // $9,999 tiers — was returned before settlement was confirmed, and any settle
-  // failure was swallowed. That handed over the goods for a verified-but-unsettled
-  // payment. Settlement is now awaited and gates the response: no settle success,
-  // no result.
-  let settleResult: { success?: boolean; errorReason?: string; transaction?: string; network?: string };
+  const result = tier.shopifyUrl
+    ? {
+        success: true,
+        tier: tier.path.replace('/api/', ''),
+        fulfillment_url: tier.shopifyUrl(env),
+        payer: verifyResult.payer,
+        charged_usd6: requestedEth ? '0' : amount,
+        charged_eth_wei: requestedEth ? amount : '0',
+        payment_asset: requestedEth ? 'ETH' : 'USDC',
+      }
+    : {
+        success: true,
+        tier: tier.path.replace('/api/', ''),
+        result: tier.description,
+        input: body,
+        payer: verifyResult.payer,
+        charged_usd6: requestedEth ? '0' : amount,
+        charged_eth_wei: requestedEth ? amount : '0',
+        payment_asset: requestedEth ? 'ETH' : 'USDC',
+      };
+
+  const payerAddress = verifyResult.payer ?? 'unknown';
+
+  // Settle BEFORE releasing the result. Previously settlement ran fire-and-forget
+  // in ctx.waitUntil(...), so the 200 (including the Shopify fulfillment_url on the
+  // $4,999 / $9,999 tiers) was returned before settlement was confirmed and any
+  // failure was swallowed. Settlement is now awaited and gates the response: no
+  // settle success, no result. See settle-gate.test.ts.
+  let settleResult: { success?: boolean; errorReason?: string; transaction?: string };
   try {
     const settleResp = await facilitatorPost('settle', {
       x402Version: X402_VERSION,
       paymentPayload,
       paymentRequirements,
     }, env);
-
     if (!settleResp.ok) {
       const txt = await settleResp.text();
       console.error(`[settle] facilitator HTTP ${settleResp.status}: ${txt}`);
@@ -253,58 +531,65 @@ async function handleTier(
     console.error(`[settle] request failed: ${String(e)}`);
     return Response.json({ error: 'Settlement request failed', detail: String(e) }, { status: 502 });
   }
-
   if (!settleResult.success) {
     console.error(`[settle] not settled: ${settleResult.errorReason ?? 'unknown reason'}`);
     return payment402(paymentRequired, settleResult.errorReason ?? 'Settlement not completed');
   }
 
-  // Payment is now verified AND settled on-chain — safe to release the result.
-  const result = tier.shopifyUrl
-    ? {
-        success: true,
-        tier: tier.path.replace('/api/', ''),
-        fulfillment_url: tier.shopifyUrl(env),
-        payer: verifyResult.payer,
-        charged_usd6: amount,
-        settlement_tx: settleResult.transaction ?? null,
-      }
-    : {
-        success: true,
-        tier: tier.path.replace('/api/', ''),
-        result: tier.description,
-        input: body,
-        payer: verifyResult.payer,
-        charged_usd6: amount,
-        settlement_tx: settleResult.transaction ?? null,
-      };
+  // Confirmed settled — record analytics (best-effort) and release the result.
+  try {
+    env.ANALYTICS?.writeDataPoint({
+      blobs: [payerAddress, tier.path, tier.description],
+      doubles: [Number(amount) / (requestedEth ? 1e18 : 1_000_000)],
+      indexes: [payerAddress],
+    });
+  } catch (e) {
+    console.error('[analytics] failed:', e);
+  }
 
-  return Response.json(result);
+  return Response.json({ ...result, payer: payerAddress, settlement_tx: settleResult.transaction ?? null });
 }
 
-// ── Static content builders ───────────────────────────────────────────────────
-
-function activeFacilitatorUrl(env: Env): string {
-  return (env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) ? CDP_FACILITATOR : PUBLIC_FACILITATOR;
-}
+// ── Discovery builders ─────────────────────────────────────────────────────
 
 function buildX402Discovery(env: Env, hostname: string) {
-  return {
-    version: '2.0',
-    endpoints: TIERS.map((t) => ({
+  const tiers = TIERS.map((t) => {
+    const primaryAmount = t.getAmount(env);
+    const ethAmount = t.getEthAmount(env);
+
+    return {
       path: t.path,
       method: 'POST',
-      price: { amount: t.getAmount(env), currency: 'USDC', decimals: 6 },
+      price: { amount: primaryAmount, currency: 'USDC', decimals: 6 },
+      ethPrice: ETH_SETTLEMENT_ENABLED ? { amount: ethAmount, currency: 'ETH', decimals: 18 } : undefined,
       displayPrice: t.displayPrice,
       description: t.description,
       network: NETWORK,
       payTo: env.VAULT_ADDRESS,
       ...(t.shopifyUrl ? { shopify_url: t.shopifyUrl(env) } : {}),
-    })),
+    };
+  });
+
+  return {
+    version: '2.0',
+    endpoints: tiers,
     payTo: env.VAULT_ADDRESS,
     asset: env.USDC_ADDRESS || USDC_BASE,
     network: NETWORK,
-    facilitator: activeFacilitatorUrl(env),
+    ethEnabled: ETH_SETTLEMENT_ENABLED,
+    solanaEnabled: true,
+    solanaNetwork: env.SOLANA_NETWORK || 'mainnet-beta',
+    solanaUsdcMint: env.SOLANA_USDC_MINT || SOLANA_USDC_MINT_DEFAULT,
+    shopify: {
+      store: env.SHOPIFY_STORE_DOMAIN || 'shop.genesisconductor.io',
+      founders: env.SHOPIFY_FOUNDERS_URL,
+      sourceExclusive: env.SHOPIFY_SOURCE_EXCLUSIVE_URL,
+    },
+    alchemy: {
+      baseRpcConfigured: Boolean(env.ALCHEMY_BASE_RPC_URL),
+      solanaRpc: resolveSolanaRpcUrl(env).includes('alchemy.com') ? 'alchemy' : 'public-or-custom',
+    },
+    facilitator: (env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) ? CDP_FACILITATOR : PUBLIC_FACILITATOR,
     discovery: {
       x402: `https://${hostname}/.well-known/x402`,
       openapi: `https://${hostname}/openapi.json`,
@@ -320,12 +605,32 @@ function buildOpenAPI(hostname: string) {
       post: {
         summary: `${t.description} (${t.displayPrice})`,
         operationId: `tier_${t.path.replace('/api/', '').replace('-', '_')}`,
+        parameters: [
+          {
+            name: 'X-PAYMENT-SIGNATURE',
+            in: 'header',
+            description: 'Base64-encoded x402 payment signature (USDC or ETH on Base/Polygon)',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'X-SOLANA-SIGNATURE',
+            in: 'header',
+            description: 'Solana transaction signature for USDC payment',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'X-PAYMENT-ASSET',
+            in: 'header',
+            description: 'Preferred payment asset: USDC, ETH, or WETH',
+            schema: { type: 'string', enum: ['USDC', 'ETH', 'WETH'] },
+          },
+        ],
         requestBody: {
           content: { 'application/json': { schema: { type: 'object' } } },
         },
         responses: {
           '200': { description: 'Success' },
-          '402': { description: 'Payment Required — include PAYMENT-SIGNATURE header' },
+          '402': { description: 'Payment Required' },
         },
       },
     };
@@ -334,8 +639,8 @@ function buildOpenAPI(hostname: string) {
     openapi: '3.0.0',
     info: {
       title: 'Genesis Conductor x402 Tiered Service',
-      version: '2.0.0',
-      description: 'Six-tier x402 paid API on Base. Pay USDC per request — no accounts needed.',
+      version: '2.1.0',
+      description: 'Six-tier x402 paid API on Base. Supports USDC, ETH, and Solana USDC payments.',
     },
     servers: [{ url: `https://${hostname}` }],
     paths: {
@@ -349,23 +654,27 @@ function buildOpenAPI(hostname: string) {
 
 function buildLlmsTxt(hostname: string) {
   const tierDocs = TIERS.map(
-    (t) => `### POST ${t.path}\n${t.description} (${t.displayPrice} USDC)\n`,
+    (t) => `### POST ${t.path}\n${t.description} (${t.displayPrice})\n`,
   ).join('\n');
 
   return `# Genesis Conductor x402 Tiered Service
 
-> Paid API using the x402 protocol on Base. Six tiers from $0.01 to $9,999.
+> Paid API using the x402 protocol on Base + Polygon. Six tiers from $0.01 to $9,999.
 
 ## Overview
-- **Network**: Base mainnet (eip155:8453)
-- **Payment token**: USDC
+- **Networks**: Base mainnet (eip155:8453), Polygon mainnet (eip155:137)
+- **Payment tokens**: USDC, ETH (native)
 - **Facilitator**: Coinbase CDP facilitator (${CDP_FACILITATOR}) — production-grade settlement via Coinbase Developer Platform, handles high-value tiers ($4,999 / $9,999). Falls back to the public x402.org facilitator when CDP keys are absent.
 
 ## Payment Flow
 1. Call any \`POST /api/*\` endpoint without a payment header
 2. Receive \`402\` with \`PAYMENT-REQUIRED\` header (base64-JSON payment requirements)
-3. Sign a USDC transfer for the advertised amount to the advertised wallet
+3. Sign a USDC or ETH transfer for the advertised amount to the advertised wallet
 4. Retry with \`PAYMENT-SIGNATURE: <base64 payload>\` header
+
+## Supported Assets
+- **USDC**: 6-decimal stablecoin on Base/Polygon
+- **ETH**: Native ether on Base (18-decimal wei)
 
 ## Endpoints
 
@@ -380,34 +689,44 @@ ${tierDocs}
 // ── Gas monitor ───────────────────────────────────────────────────────────────
 
 const GAS_LOW_THRESHOLD_WEI = BigInt('2000000000000000');  // 0.002 ETH
-const BASE_RPC_FALLBACKS = [
-  'https://base.llamarpc.com',
-  'https://base-rpc.publicnode.com',
-  'https://mainnet.base.org',
-];
+function isAllowedAlchemyRpcUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === 'https:' && (
+      url.hostname === 'x402.alchemy.com' ||
+      url.hostname.endsWith('.g.alchemy.com')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function resolveBaseRpcUrl(env: Env): string {
+  const rpcUrl = env.ALCHEMY_BASE_RPC_URL?.trim();
+  if (!rpcUrl) {
+    throw new Error('ALCHEMY_BASE_RPC_URL is required for gas monitoring');
+  }
+  if (!isAllowedAlchemyRpcUrl(rpcUrl)) {
+    throw new Error('ALCHEMY_BASE_RPC_URL must be an HTTPS Alchemy RPC URL');
+  }
+  return rpcUrl;
+}
 
 async function getEthBalance(address: string, primaryRpc: string): Promise<bigint> {
-  const rpcs = [primaryRpc, ...BASE_RPC_FALLBACKS.filter((r) => r !== primaryRpc)];
-  let lastErr: Error | null = null;
-  for (const rpc of rpcs) {
-    try {
-      const resp = await fetch(rpc, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [address, 'latest'] }),
-      });
-      const json = (await resp.json()) as { result?: string; error?: { message: string } };
-      if (!json.result) throw new Error(json.error?.message ?? 'no result');
-      return BigInt(json.result);
-    } catch (e) {
-      lastErr = e as Error;
-    }
+  const resp = await fetch(primaryRpc, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [address, 'latest'] }),
+  });
+  const json = (await resp.json()) as { result?: string; error?: { message: string } };
+  if (!json.result) {
+    throw new Error(json.error?.message ?? 'no result');
   }
-  throw lastErr ?? new Error('All RPCs failed');
+  return BigInt(json.result);
 }
 
 async function checkGasAndAlert(env: Env): Promise<{ vault: string; main: string | null; low: boolean }> {
-  const rpc = env.BASE_RPC_URL || BASE_RPC_FALLBACKS[0];
+  const rpc = resolveBaseRpcUrl(env);
   const vaultBal = await getEthBalance(env.VAULT_ADDRESS, rpc);
   const mainBal = env.MAIN_WALLET ? await getEthBalance(env.MAIN_WALLET, rpc) : null;
 
@@ -443,11 +762,11 @@ export default {
       const html = `<!DOCTYPE html><html lang="en"><head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Genesis Conductor x402 — Tiered Paid API</title>
-  <meta name="description" content="Six-tier x402 paid service on Base. Pay USDC per request.">
+  <meta name="description" content="Six-tier x402 paid service on Base. Pay USDC, ETH, or Solana USDC.">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebAPI","name":"Genesis Conductor x402 Tiered Service","url":"https://${hostname}"}</script>
 </head><body>
   <h1>Genesis Conductor x402 Tiered Service</h1>
-  <p>Six tiers of paid API access — pay USDC on Base, no accounts needed.</p>
+  <p>Six tiers of paid API access — pay <strong>USDC</strong> or <strong>ETH</strong> on Base, or <strong>USDC</strong> on Solana.</p>
   <table border="1" cellpadding="4"><thead><tr><th>Endpoint</th><th>Price</th><th>Description</th></tr></thead>
   <tbody>${tierRows}</tbody></table>
   <p>See <a href="/llms.txt">/llms.txt</a> or <a href="/.well-known/x402">/.well-known/x402</a> for payment details.</p>
@@ -456,7 +775,23 @@ export default {
     }
 
     if (pathname === '/health') {
-      return Response.json({ status: 'ok', tiers: TIERS.length, vault: env.VAULT_ADDRESS });
+      return Response.json({
+        status: 'ok',
+        tiers: TIERS.length,
+        vault: env.VAULT_ADDRESS,
+        eth_pricing_enabled: ETH_PRICING_ENABLED(env),
+        solana_enabled: true,
+        solana_rpc: resolveSolanaRpcUrl(env).includes('alchemy.com') ? 'alchemy' : 'configured',
+        shopify_store: env.SHOPIFY_STORE_DOMAIN || 'shop.genesisconductor.io',
+        alchemy_base_rpc: Boolean(env.ALCHEMY_BASE_RPC_URL),
+        facilitator: (env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) ? 'cdp' : 'public',
+        integrations: {
+          shopify: true,
+          alchemy: Boolean(env.ALCHEMY_BASE_RPC_URL || env.ALCHEMY_API_KEY),
+          openclaw: true,
+          cloudflare: true,
+        },
+      });
     }
 
     if (pathname === '/health/gas') {
@@ -471,11 +806,21 @@ export default {
     if (pathname === '/health/facilitator') {
       const mode = (env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) ? 'cdp' : 'public';
       const facilitatorUrl = mode === 'cdp' ? CDP_FACILITATOR : PUBLIC_FACILITATOR;
-      // Lightweight ping — call the /supported endpoint (GET, no auth required for public info)
       let ok = false;
       let pingError: string | undefined;
       try {
-        const pingResp = await fetch(`${facilitatorUrl}/supported`, { method: 'GET' });
+        const pingOptions: RequestInit = { method: 'GET' };
+        if (mode === 'cdp' && env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) {
+          const authHeader = await createCdpAuthHeader(
+            env.CDP_API_KEY_ID,
+            env.CDP_API_KEY_SECRET,
+            'GET',
+            CDP_FACILITATOR_HOST,
+            `${CDP_FACILITATOR_PATH}/supported`,
+          );
+          pingOptions.headers = { 'Authorization': authHeader, 'Correlation-Context': createCorrelationHeader() };
+        }
+        const pingResp = await fetch(`${facilitatorUrl}/supported`, pingOptions);
         ok = pingResp.ok;
         if (!ok) {
           pingError = `HTTP ${pingResp.status}`;
@@ -483,7 +828,7 @@ export default {
       } catch (e) {
         pingError = String(e);
       }
-      return Response.json({ mode, facilitator: facilitatorUrl, ok, ...(pingError ? { error: pingError } : {}) }, {
+      return Response.json({ mode, facilitator: facilitatorUrl, ok, ...(pingError ? { error: pingError } : {}), eth_pricing_enabled: ETH_PRICING_ENABLED(env) }, {
         status: ok ? 200 : 502,
       });
     }
@@ -511,7 +856,7 @@ export default {
         '@context': 'https://schema.org',
         '@type': 'WebAPI',
         name: 'Genesis Conductor x402 Tiered Service',
-        description: 'Six-tier x402 paid API on Base.',
+        description: 'Six-tier x402 paid API on Base. Supports USDC, ETH, and Solana USDC payments.',
         url: `https://${hostname}`,
         documentation: `https://${hostname}/llms.txt`,
       }, { headers: { 'Cache-Control': 'public, max-age=3600' } });
@@ -522,8 +867,8 @@ export default {
         schema_version: 'v1',
         name_for_human: 'Genesis Conductor x402',
         name_for_model: 'genesis_conductor_x402',
-        description_for_human: 'Six-tier paid API using USDC micropayments on Base',
-        description_for_model: 'Six tiers of paid API access ($0.01–$9,999). Call /.well-known/x402 first, then retry with PAYMENT-SIGNATURE header.',
+        description_for_human: 'Six-tier paid API using USDC, ETH, and Solana USDC micropayments on Base',
+        description_for_model: 'Six tiers of paid API access ($0.01–$9,999). Supports USDC, ETH, and Solana USDC. Call /.well-known/x402 first, then retry with PAYMENT-SIGNATURE or X-SOLANA-SIGNATURE header.',
         auth: { type: 'none' },
         api: { type: 'openapi', url: `https://${hostname}/openapi.json` },
         contact_email: 'api@genesisconductor.io',
@@ -557,8 +902,49 @@ export default {
     const tier = TIERS.find((t) => t.path === pathname);
     if (tier) {
       if (request.method !== 'POST') {
-        return Response.json({ error: 'Method not allowed' }, { status: 405 });
+        const paymentRequired = buildPaymentRequired(request.url, tier.getAmount(env), env.VAULT_ADDRESS, tier.asset || env.USDC_ADDRESS || USDC_BASE, tier.description, tier.getEthAmount(env));
+        return payment402(paymentRequired);
       }
+      
+      // Check for Solana payment
+      const solanaSignature = request.headers.get('X-SOLANA-SIGNATURE');
+      if (solanaSignature) {
+        const solanaAmount = tier.getAmount(env);
+        const result = await verifySolanaUsdcTransfer(solanaSignature, solanaAmount, env.VAULT_ADDRESS, env);
+        
+        if (!result.isValid) {
+          return Response.json({ error: result.error || 'Solana payment verification failed' }, { status: 400 });
+        }
+        
+        // Record Solana payment
+        ctx.waitUntil(
+          (async () => {
+            try {
+              env.ANALYTICS?.writeDataPoint({
+                blobs: [result.payer || 'unknown', tier.path, tier.description],
+                doubles: [Number(solanaAmount) / 1_000_000],
+                indexes: [result.payer || 'unknown'],
+              });
+            } catch (e) {
+              console.error('[solana-analytics] failed:', e);
+            }
+          })(),
+        );
+        
+        const body = await request.json().catch(() => ({}));
+        return Response.json({
+          success: true,
+          tier: tier.path.replace('/api/', ''),
+          result: tier.description,
+          input: body,
+          payer: result.payer,
+          charged_usd6: solanaAmount,
+          charged_eth_wei: '0',
+          payment_asset: 'USDC_SOLANA',
+          solana_signature: solanaSignature,
+        });
+      }
+      
       return handleTier(request, env, ctx, tier);
     }
 
