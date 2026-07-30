@@ -24,13 +24,64 @@ Deliver the three evolve domains (MCP trust, crew topology, metrics → retraine
 ## Prerequisites
 
 - Python 3.11+
-- No secrets in repo; env **names** only: `GC_MCP_TOKEN`, `RETRAINER_BASE_URL`, `X402_PAYMENT_PROOF`
+- No secrets in repo; env **names** only: `GC_MCP_TOKEN`, `RETRAINER_BASE_URL`, `X402_PAYMENT_PROOF`, `X_ADMIN_KEY`, `LOGFIRE_TOKEN`
 - Worktree: `/Users/igorholt/.worktrees/feat-gc-crew-mcp-evolve` (or clone path)
 
 ```bash
 cd gc-workers/gc-crew-mcp-bridge
 PYTHONPATH=src python -c "import gc_crew_mcp; print(gc_crew_mcp.__version__)"
+# or:
+PYTHONPATH=src python -m gc_crew_mcp version
 ```
+
+---
+
+## Operator CLI (progress Domains A / B / C)
+
+```bash
+cd gc-workers/gc-crew-mcp-bridge
+export PYTHONPATH=src
+
+# Domain A — trust policy
+python -m gc_crew_mcp trust-check \
+  https://optimization-inversion.genesisconductor.io/mcp
+
+# Domain B — isolation plan + validate_roster
+python -m gc_crew_mcp roster
+
+# Domain C — evolve dry-run (mock 402; no live pay)
+python -m gc_crew_mcp evolve-dry --goal-status partial \
+  --quality 0.85 --latency-ms 100 --candidate-id dry-run-1
+
+# Domain C — discovery only (network; no payment)
+python -m gc_crew_mcp x402-discover \
+  --base-url https://optimization-inversion.genesisconductor.io
+```
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | success (`trust-check` all trusted; `evolve-dry` `ok` / `payment_required`) |
+| 2 | usage / validation (untrusted URL, bad args) |
+| 1 | runtime / roster validation failure / fetch error |
+
+Unit tests inject openers/transports — **no real network** in `tests/test_cli.py`.
+
+---
+
+## Optional Logfire instrumentation
+
+Package works with **zero** third-party deps. Observability is opt-in:
+
+```bash
+pip install 'logfire>=2.0'   # or: pip install -e ".[logfire]"
+export LOGFIRE_TOKEN=...     # name only in docs — never commit value
+# optional local debug without Logfire cloud:
+export GC_CREW_MCP_DEBUG=1
+```
+
+- CLI calls `configure_observability()` at start of every command except `version`.
+- `submit_metrics` is wrapped in span `evolve.submit_metrics` (host / goal_status / candidate_id only — **never** proof/key/token attrs).
+- Without import or token: no-op spans and structured logs.
 
 ---
 
@@ -41,7 +92,7 @@ cd gc-workers/gc-crew-mcp-bridge
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
-Suite covers trust, agents, crew topology, metrics, x402_client, evolve_hook.  
+Suite covers trust, agents, crew topology, metrics, x402_client, evolve_hook, observability, **cli**.  
 **No network and no live payment** in unit tests.
 
 Evolve-only slice:
@@ -49,6 +100,12 @@ Evolve-only slice:
 ```bash
 PYTHONPATH=src python -m unittest \
   tests.test_metrics tests.test_x402_client tests.test_evolve_hook -v
+```
+
+CLI slice:
+
+```bash
+PYTHONPATH=src python -m unittest tests.test_cli -v
 ```
 
 ---
@@ -184,13 +241,15 @@ Do **not** run live-pay phases from the workflow defaults; MetricsDryRun is mock
 
 ---
 
-## Module map (Domain C)
+## Module map (Domain C + CLI)
 
 | Module | Responsibility |
 | --- | --- |
 | `gc_crew_mcp.metrics` | `RunMetrics`, `validate_goal_status`, `to_ralph_payload` |
 | `gc_crew_mcp.x402_client` | Constants, `parse_402_body`, `build_admin_request`, `classify_response`, injectable `fetch_well_known` |
 | `gc_crew_mcp.evolve_hook` | `submit_metrics` → `POST /admin/slices`; 402 → `{status: payment_required, x402}` |
+| `gc_crew_mcp.observability` | Optional Logfire: `configure_observability`, `span`, `info`, `error` (secret-key redaction) |
+| `gc_crew_mcp.cli` / `__main__` | `python -m gc_crew_mcp` — trust-check, roster, evolve-dry, x402-discover, version |
 
 ---
 

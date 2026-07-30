@@ -73,7 +73,39 @@ Optional extras:
 ```bash
 pip install -e ".[crewai]"   # optional; adapter works without it
 pip install -e ".[mcp]"
+pip install -e ".[logfire]"  # optional observability; no hard dep
 ```
+
+## CLI (Domains A / B / C)
+
+stdlib entry — no third-party deps required:
+
+```bash
+cd gc-workers/gc-crew-mcp-bridge
+export PYTHONPATH=src
+
+python -m gc_crew_mcp version
+python -m gc_crew_mcp trust-check \
+  https://optimization-inversion.genesisconductor.io/mcp
+python -m gc_crew_mcp roster
+python -m gc_crew_mcp evolve-dry --goal-status partial
+# Live network optional smoke (unit tests inject opener; no pay):
+python -m gc_crew_mcp x402-discover
+```
+
+| Command | Domain | Exit 0 when | Notes |
+|---------|--------|-------------|--------|
+| `trust-check URL...` | A | all URLs trusted | else exit **2**; JSON `[{url, trusted}]` |
+| `roster` | B | `validate_roster` empty | prints `parallel_dispatch_plan`; exit **1** if validation messages |
+| `evolve-dry` | C | status `payment_required` or `ok` | default **mock 402** transport; flags `--quality`, `--latency-ms`, `--cost-usdc6`, `--goal-status`, `--candidate-id`, `--base-url` |
+| `x402-discover` | C | discovery fetch ok | GET `/.well-known/x402`; prints `{match, discovered, expected}`; **no payment**; untrusted base → exit **2** |
+| `version` | — | always | package version string |
+
+Exit codes: **0** success, **2** usage/validation (untrusted URL, bad args), **1** runtime error.
+
+Observability: every command except `version` calls `configure_observability()` at start. Without `logfire` or `LOGFIRE_TOKEN`, spans/logs are no-ops. Optional stderr debug: `GC_CREW_MCP_DEBUG=1`.
+
+Env **names** only (never log values): `LOGFIRE_TOKEN`, `RETRAINER_BASE_URL`, `GC_MCP_TOKEN`, `X402_PAYMENT_PROOF`, `X_ADMIN_KEY`.
 
 ## Evolve hook (Domain C)
 
@@ -111,8 +143,12 @@ See operator runbook: `docs/superpowers/plans/GC_CREW_MCP_EVOLVE_RUNBOOK.md`.
 - `GC_MCP_TOKEN`
 - `RETRAINER_BASE_URL`
 - `X402_PAYMENT_PROOF`
+- `X_ADMIN_KEY`
+- `LOGFIRE_TOKEN`
+- `GC_CREW_MCP_DEBUG` (`1` for stderr debug when Logfire inactive)
 
 ## Constraints
 
 - No fund movement / no live x402 settle in this package's unit tests.
 - No secrets committed.
+- CLI default paths never live-pay (`evolve-dry` uses mock 402).
