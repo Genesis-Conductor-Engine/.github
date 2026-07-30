@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 from gc_crew_mcp.metrics import RunMetrics, to_ralph_payload
 from gc_crew_mcp.observability import span
+from gc_crew_mcp.trust import is_trusted_url
 from gc_crew_mcp.x402_client import (
     ADMIN_SLICES_PATH,
     build_admin_request,
@@ -80,6 +81,13 @@ def submit_metrics(
     parsed = urlparse(base_url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"base_url must be http(s), got scheme={parsed.scheme!r}")
+    # Harden: only POST to trusted hosts (TRUSTED_HOSTS / *.genesisconductor.io /
+    # local http). Check origin form so path-less bases still validate.
+    if not parsed.netloc:
+        raise ValueError(f"base_url missing host: {base_url!r}")
+    origin = f"{parsed.scheme}://{parsed.netloc}/"
+    if not (is_trusted_url(base_url) or is_trusted_url(origin)):
+        raise ValueError(f"untrusted base_url: {base_url!r}")
 
     # Never pass payment_proof / admin_key into span attributes.
     with span(

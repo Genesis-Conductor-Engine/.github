@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from gc_crew_mcp import __version__
 from gc_crew_mcp.crew_topology import (
@@ -93,6 +94,18 @@ def cmd_roster() -> int:
         return 0
 
 
+def _base_url_trusted(base_url: str) -> bool:
+    """True if base_url (or its scheme://netloc/ origin) passes trust policy."""
+    if not base_url or not isinstance(base_url, str):
+        return False
+    if is_trusted_url(base_url):
+        return True
+    parsed = urlparse(base_url)
+    if parsed.scheme and parsed.netloc:
+        return is_trusted_url(f"{parsed.scheme}://{parsed.netloc}/")
+    return False
+
+
 def cmd_evolve_dry(
     *,
     quality: float,
@@ -102,13 +115,51 @@ def cmd_evolve_dry(
     candidate_id: str | None,
     base_url: str = DEFAULT_RETRAINER_BASE,
     transport: Transport | None = None,
+    live: bool = False,
+    payment_proof: str | None = None,
+    admin_key: str | None = None,
 ) -> int:
-    """Domain C dry-run: POST metrics via mock 402 transport (no live pay)."""
+    """Domain C: dry-run submit_metrics (mock 402 by default).
+
+    ``--live`` uses real transport only when ``base_url`` is trusted **and**
+    a payment proof or admin key is provided (flag or env). Otherwise exit 2.
+    """
     try:
         status = validate_goal_status(goal_status)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+
+    # Resolve auth from flags first, then env (never log values).
+    proof = payment_proof if payment_proof else os.environ.get("X402_PAYMENT_PROOF")
+    key = admin_key if admin_key else os.environ.get("X_ADMIN_KEY")
+    # Treat empty strings as absent.
+    if proof is not None and not str(proof).strip():
+        proof = None
+    if key is not None and not str(key).strip():
+        key = None
+
+    if live:
+        if not _base_url_trusted(base_url):
+            print(
+                f"error: --live requires a trusted --base-url, got {base_url!r}",
+                file=sys.stderr,
+            )
+            return 2
+        if not proof and not key:
+            print(
+                "error: --live requires --payment-proof (or env X402_PAYMENT_PROOF) "
+                "or --admin-key (or env X_ADMIN_KEY)",
+                file=sys.stderr,
+            )
+            return 2
+        # Real transport (or injected for tests). No mock when live is requested.
+        xport: Transport | None = transport  # None → submit_metrics default
+        use_proof, use_key = proof, key
+    else:
+        # Default dry-run path: mock 402, no auth headers, no live pay.
+        xport = transport if transport is not None else _mock_402_transport
+        use_proof, use_key = None, None
 
     metrics = RunMetrics(
         quality=quality,
@@ -117,15 +168,21 @@ def cmd_evolve_dry(
         goal_status=status,
         candidate_id=candidate_id,
     )
-    xport: Transport = transport if transport is not None else _mock_402_transport
 
     with span(
         "cli.evolve_dry",
         goal_status=status,
         candidate_id=candidate_id,
+        live=live,
     ):
         try:
-            result = submit_metrics(base_url, metrics, transport=xport)
+            result = submit_metrics(
+                base_url,
+                metrics,
+                payment_proof=use_proof,
+                admin_key=use_key,
+                transport=xport,
+            )
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
@@ -280,6 +337,27 @@ def build_parser() -> argparse.ArgumentParser:
         dest="base_url",
         help=f"Retrainer base URL (default: {DEFAULT_RETRAINER_BASE})",
     )
+    p_evolve.add_argument(
+        "--live",
+        action="store_true",
+        default=False,
+        help=(
+            "Use real transport instead of mock 402. Requires trusted --base-url "
+            "and --payment-proof / X402_PAYMENT_PROOF or --admin-key / X_ADMIN_KEY"
+        ),
+    )
+    p_evolve.add_argument(
+        "--payment-proof",
+        default=None,
+        dest="payment_proof",
+        help="X-Payment-Proof value for --live (or set env X402_PAYMENT_PROOF)",
+    )
+    p_evolve.add_argument(
+        "--admin-key",
+        default=None,
+        dest="admin_key",
+        help="x-admin-key value for --live (or set env X_ADMIN_KEY)",
+    )
 
     p_disc = sub.add_parser(
         "x402-discover",
@@ -333,6 +411,9 @@ def main(
             candidate_id=args.candidate_id,
             base_url=args.base_url,
             transport=transport,
+            live=bool(getattr(args, "live", False)),
+            payment_proof=getattr(args, "payment_proof", None),
+            admin_key=getattr(args, "admin_key", None),
         )
     if args.command == "x402-discover":
         return cmd_x402_discover(args.base_url, opener=opener)
