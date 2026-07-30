@@ -8,6 +8,18 @@ Task 1 restored the home-repo deny-all `.gitignore` surface (required for allowl
 
 - **Trust policy** (`gc_crew_mcp.trust`): allowlist trusted MCP hosts, block dangerous tools by default.
 - **Agent specs** (`gc_crew_mcp.agents`): declarative `AgentSpec` + `to_crewai_kwargs` for CrewAI (or pure-stdlib fallback when `crewai` is not installed).
+- **Crew topology** (`gc_crew_mcp.crew_topology`): multi-domain roster with isolation (`Domain`, `CREW_ROSTER`, `validate_roster`, `parallel_dispatch_plan`).
+
+## Crew topology (domain isolation)
+
+| Role | Domain | Allowed tools | MCP / base |
+|------|--------|---------------|------------|
+| Researcher | `RESEARCH` | `search`, `get_status`, `list_tools` | `https://optimization-inversion.genesisconductor.io/mcp` (placeholder) |
+| Payment | `PAYMENT` | `get_price`, `inspect_402`, `list_tiers` | `https://optimization-inversion.genesisconductor.io/.well-known/x402` (trusted host; no settle in unit tests) |
+| Ops | `OPS` | `get_status`, `health` | trusted ambient MCP URL; no secrets |
+| Evolve coach | `EVOLVE` | `post_metrics`, `list_candidates` | no production MCP beyond retrainer base (`RETRAINER_BASE_URL`) |
+
+Isolation rules: one domain per agent; `domains_conflict` is true for the same domain string; `RESEARCH` conflicts with none of `{PAYMENT, OPS, EVOLVE}`; `PAYMENT` would conflict with `OPS` only if both had deploy (they must not). `validate_roster` rejects blocked tools in `allowed_tools` and untrusted MCP URLs.
 
 ## Trusted hosts
 

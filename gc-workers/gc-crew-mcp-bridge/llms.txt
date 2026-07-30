@@ -13,6 +13,7 @@
 
 - `gc_crew_mcp.trust` — `TRUSTED_HOSTS`, `is_trusted_url`, `filter_tools`, `assert_trusted_mcps`, `DEFAULT_BLOCKED_TOOLS`
 - `gc_crew_mcp.agents` — `AgentSpec`, `build_researcher_agent`, `to_crewai_kwargs`
+- `gc_crew_mcp.crew_topology` — `Domain`, `CREW_ROSTER`, `domains_conflict`, `validate_roster`, `parallel_dispatch_plan`
 
 ## Trusted MCP hosts
 

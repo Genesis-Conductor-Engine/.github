@@ -28,6 +28,7 @@ class AgentSpec:
     backstory: str
     mcps: list[str] = field(default_factory=list)
     allowed_tools: list[str] = field(default_factory=list)
+    domain: str = ""
 
 
 def build_researcher_agent() -> AgentSpec:
@@ -51,6 +52,7 @@ def build_researcher_agent() -> AgentSpec:
         ),
         mcps=[RESEARCH_MCP_URL],
         allowed_tools=["search", "get_status", "list_tools"],
+        domain="RESEARCH",
     )
 
 
