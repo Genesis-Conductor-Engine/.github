@@ -5,8 +5,8 @@
 #   2. Both low, vault has USDC → swap USDC→WETH→ETH via Uniswap V3 using main wallet
 #   3. All low → alert only
 #
-# Required env vars (never hardcode; load from .env or pass inline):
-#   MAIN_PK        - private key of main wallet (0x60C4...) — for signing transactions
+# Required env vars (never hardcode; load via `source ~/.vault/bin/load-project-env.sh x402-worker`):
+#   MAIN_PK        - private key of main wallet (0x967a9C...) — for signing transactions, stored in macOS Keychain
 #
 # Optional:
 #   THRESHOLD_ETH  - refuel trigger per wallet (default: 0.002)
@@ -18,8 +18,8 @@ THRESHOLD="${THRESHOLD_ETH:-0.002}"
 SWAP_USDC="${SWAP_USDC:-1500000}"
 RPC="${BASE_RPC_URL:?BASE_RPC_URL must be set (e.g. source ~/.vault/bin/load-project-env.sh x402-worker)}"
 RPC_FALLBACK="https://base.llamarpc.com"
-VAULT="0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8"
-MAIN_WALLET="0x60C4499870f115664d7FfD8411b023DBEf3377d9"
+VAULT="0x60C4499870f115664d7FfD8411b023DBEf3377d9"  # rotated from compromised key
+MAIN_WALLET="0x967a9C352a87D3a72baa7aD10632A7276101dBc9"  # rotated 2026-08-01; key lives in Keychain vault:x402-worker:MAIN_PRIVATE_KEY (see LAUNCH_PLAN.md)
 USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 WETH="0x4200000000000000000000000000000000000006"
 SWAP_ROUTER="0x2626664c2603336E57B271c5C0b26F421741e481"

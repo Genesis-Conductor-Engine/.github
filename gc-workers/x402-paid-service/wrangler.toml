@@ -1,6 +1,7 @@
 name = "x402-paid-service"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
 
 [triggers]
 crons = ["0 */6 * * *"]   # gas monitor every 6 hours
@@ -19,7 +20,7 @@ dataset = "x402_engagement_metrics"
 # Facilitator mode: "cdp" routes through Coinbase CDP (production-grade).
 # Change to "public" to fall back to the rate-limited x402.org/facilitator.
 X402_FACILITATOR_MODE = "cdp"
-VAULT_ADDRESS = "0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8"
+VAULT_ADDRESS = "0x60C4499870f115664d7FfD8411b023DBEf3377d9"  # rotated from old compromised key
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 CHAIN_ID = "8453"
 # Legacy single-tier price (backwards compat for /api/execute)
@@ -32,6 +33,13 @@ TIER_INFERENCE_USD6 = "10000000"
 TIER_SPECIALIZED_USD6 = "100000000"
 TIER_FOUNDERS_USD6 = "4999000000"
 TIER_SOURCE_EXCLUSIVE_USD6 = "9999000000"
+# ETH pricing — 18-decimal wei (calculated at $2000/ETH)
+TIER_DISCOVERY_ETH_WEI = "5000000000000"
+TIER_PRO_ETH_WEI = "500000000000000"
+TIER_INFERENCE_ETH_WEI = "5000000000000000"
+TIER_SPECIALIZED_ETH_WEI = "50000000000000000"
+TIER_FOUNDERS_ETH_WEI = "2499500000000000000"
+TIER_SOURCE_EXCLUSIVE_ETH_WEI = "4999500000000000000"
 # Fulfillment URLs — high-tier endpoints redirect successful payments to existing Shopify SKUs
 SHOPIFY_FOUNDERS_URL = "https://shop.genesisconductor.io/products/gc-founders-license"
 SHOPIFY_SOURCE_EXCLUSIVE_URL = "https://shop.genesisconductor.io/products/gc-source-exclusive"
@@ -40,4 +48,4 @@ SHOPIFY_STORE_DOMAIN = "shop.genesisconductor.io"
 # Gas monitoring — checked every 6h by cron
 # BASE_RPC_URL is a secret, not a var — set it with:
 #   wrangler secret put BASE_RPC_URL
-MAIN_WALLET = "0x60C4499870f115664d7FfD8411b023DBEf3377d9"
+MAIN_WALLET = "0x967a9C352a87D3a72baa7aD10632A7276101dBc9"  # rotated 2026-08-01; old key compromised, see LAUNCH_PLAN.md
