@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Genesis Conductor Engine — Azure Developer CLI project definition
+# Docs: https://learn.microsoft.com/azure/developer/azure-developer-cli/azd-schema
+
+name: genesis-conductor-engine
+metadata:
+  template: genesis-conductor-engine@0.0.1
+
+# Uncomment and configure services as you onboard Azure resources:
+# services:
+#   api:
+#     project: ./gc-workers/x402-paid-service
+#     language: ts
+#     host: containerapp
+#   intent:
+#     project: ./gc-workers/intent-surface
+#     language: ts
+#     host: containerapp

@@ -13,6 +13,7 @@
 !/package.json
 !/package-lock.json
 !/vercel.json
+!/azure.yaml
 
 !/.claude/
 /.claude/*
@@ -40,6 +41,8 @@
 !/gc-workers/x402-paid-service/**
 !/gc-workers/gc-crew-mcp-bridge/
 !/gc-workers/gc-crew-mcp-bridge/**
+!/gc-workers/intent-surface/
+!/gc-workers/intent-surface/**
 
 # Generated and sensitive files stay ignored even inside allowed directories.
 **/.DS_Store
