@@ -297,7 +297,15 @@ describe('x402 Worker paid tier routes', () => {
       payTo: VAULT,
     });
     expect(body.resource.url).toBe(`${HOST}/api/execute`);
-    expect(body.resource.description).toContain('Discovery tier');
+    // Assert the invariant, not the marketing copy. The Bazaar renders these
+    // descriptions; a listing without one is indistinguishable from a dead
+    // endpoint to any agent browsing for a capability, so every payment path
+    // must carry a substantive description and they must agree.
+    expect(body.resource.description).toBeTruthy();
+    expect(body.resource.description.length).toBeGreaterThan(40);
+    for (const accept of body.accepts as Array<{ description?: string }>) {
+      expect(accept.description).toBe(body.resource.description);
+    }
     expect(body.extensions.kind).toBe('discovery');
     expect(httpMocks.encodePaymentRequiredHeader).toHaveBeenCalledWith(expect.objectContaining({ x402Version: 2 }));
   });

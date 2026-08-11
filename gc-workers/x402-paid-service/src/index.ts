@@ -99,6 +99,7 @@ interface Env {
   CDP_API_KEY_SECRET?: string;
   // Gas monitoring + Alchemy (Base RPC secret; optional key for Solana RPC)
   ALCHEMY_BASE_RPC_URL?: string;
+  BASE_RPC_URL?: string;
   ALCHEMY_API_KEY?: string;
   MAIN_WALLET?: string;
   GAS_ALERT_WEBHOOK?: string;
@@ -134,7 +135,8 @@ const TIERS: TierConfig[] = [
     path: '/api/execute',
     getAmount: (e) => e.TIER_DISCOVERY_USD6,
     getEthAmount: (e) => e.TIER_DISCOVERY_ETH_WEI,
-    description: 'Discovery tier — generic paid API call',
+    description:
+      'x402 settlement smoke test — cheapest end-to-end paid call on Base. Verify your wallet, facilitator, and EIP-3009 USDC settlement for one cent before spending more. Returns payer address and confirmation. Keywords: x402 test, payment verification, cheapest api, micropayment, agent onboarding, penny call.',
     displayPrice: '$0.01',
     asset: USDC_BASE,
     ethAsset: 'native',
@@ -143,7 +145,8 @@ const TIERS: TierConfig[] = [
     path: '/api/pro',
     getAmount: (e) => e.TIER_PRO_USD6,
     getEthAmount: (e) => e.TIER_PRO_ETH_WEI,
-    description: 'Pro tier — premium paid API access',
+    description:
+      'Pro metered API access — authenticated agent-to-agent execution with per-call USDC billing on Base and Polygon. No account, no API key, no subscription. Keywords: paid api, metered access, pay per request, agent api, premium endpoint, usdc billing.',
     displayPrice: '$1.00',
     asset: USDC_BASE,
     ethAsset: 'native',
@@ -152,7 +155,8 @@ const TIERS: TierConfig[] = [
     path: '/api/inference',
     getAmount: (e) => e.TIER_INFERENCE_USD6,
     getEthAmount: (e) => e.TIER_INFERENCE_ETH_WEI,
-    description: 'Inference tier — AI inference workloads',
+    description:
+      'AI inference execution billed per call in USDC — run model workloads without an inference-provider account or key. Settles on Base via EIP-3009. Keywords: ai inference, llm api, model execution, gpu compute, pay per inference, agent inference, no api key.',
     displayPrice: '$10.00',
     asset: USDC_BASE,
     ethAsset: 'native',
@@ -161,7 +165,8 @@ const TIERS: TierConfig[] = [
     path: '/api/specialized',
     getAmount: (e) => e.TIER_SPECIALIZED_USD6,
     getEthAmount: (e) => e.TIER_SPECIALIZED_ETH_WEI,
-    description: 'Specialized data tier',
+    description:
+      'Specialized dataset and enrichment access billed per query in USDC — high-value structured data for agents, no subscription or contract. Keywords: data api, dataset access, enrichment, structured data, market data, research data, pay per query.',
     displayPrice: '$100.00',
     asset: USDC_BASE,
     ethAsset: 'native',
@@ -170,7 +175,8 @@ const TIERS: TierConfig[] = [
     path: '/api/founders',
     getAmount: (e) => e.TIER_FOUNDERS_USD6,
     getEthAmount: (e) => e.TIER_FOUNDERS_ETH_WEI,
-    description: 'Genesis Conductor Founders License — agent-to-agent checkout',
+    description:
+      'Genesis Conductor Founders License — full commercial license purchasable entirely agent-to-agent, settled in USDC on Base with no sales call or contract negotiation. Includes fulfillment. Keywords: software license, commercial license, founders tier, agent checkout, autonomous purchase, b2b licensing.',
     displayPrice: '$4,999',
     asset: USDC_BASE,
     ethAsset: 'native',
@@ -180,7 +186,8 @@ const TIERS: TierConfig[] = [
     path: '/api/source-exclusive',
     getAmount: (e) => e.TIER_SOURCE_EXCLUSIVE_USD6,
     getEthAmount: (e) => e.TIER_SOURCE_EXCLUSIVE_ETH_WEI,
-    description: 'Genesis Conductor Source Exclusive — one source-exclusive plugin',
+    description:
+      'Genesis Conductor Source Exclusive — exclusive source rights to one plugin, sold once, settled agent-to-agent in USDC on Base. Highest tier, includes transfer and fulfillment. Keywords: exclusive rights, source code license, exclusivity, buyout, agent commerce, high value checkout.',
     displayPrice: '$9,999',
     asset: USDC_BASE,
     ethAsset: 'native',
@@ -279,7 +286,11 @@ async function verifySolanaUsdcTransfer(
 
 function buildPaymentRequired(requestUrl: string, amount: string, payTo: string, asset: string, description: string, ethAmount?: string) {
   // Bazaar discovery (v2 extensions field, official SDK)
+  // `description` reaches the Bazaar listing. Without it the service renders
+  // as a bare URL with no price or purpose, which is indistinguishable from a
+  // dead endpoint to any agent browsing for a capability.
   const discovery = declareDiscoveryExtension({
+    description,
     bodyType: 'json',
     input: {},
     inputSchema: { type: 'object', additionalProperties: true },
@@ -298,6 +309,8 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
     asset,
     amount,
     payTo,
+    description,
+    mimeType: 'application/json',
     maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
     extra: {
       name: 'USD Coin',
@@ -308,6 +321,7 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
         type: 'http' as const,
         method: 'POST' as const,
         discoverable: true,
+        description,
         body: { type: 'object' as const, additionalProperties: true },
       },
     },
@@ -322,6 +336,8 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
     asset,
     amount,
     payTo,
+    description,
+    mimeType: 'application/json',
     maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
     extra: {
       name: 'USD Coin',
@@ -332,6 +348,7 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
         type: 'http' as const,
         method: 'POST' as const,
         discoverable: true,
+        description,
         body: { type: 'object' as const, additionalProperties: true },
       },
     },
@@ -345,6 +362,8 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
       asset: 'native',
       amount: ethAmount,
       payTo,
+      description,
+      mimeType: 'application/json',
       maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
       extra: {
         name: 'Ether',
@@ -355,6 +374,7 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
           type: 'http' as const,
           method: 'POST' as const,
           discoverable: true,
+          description,
           body: { type: 'object' as const, additionalProperties: true },
         },
       },
@@ -725,10 +745,27 @@ async function getEthBalance(address: string, primaryRpc: string): Promise<bigin
   return BigInt(json.result);
 }
 
+async function readWalletBalances(rpc: string, env: Env): Promise<{ vault: bigint; main: bigint | null }> {
+  const vault = await getEthBalance(env.VAULT_ADDRESS, rpc);
+  const main = env.MAIN_WALLET ? await getEthBalance(env.MAIN_WALLET, rpc) : null;
+  return { vault, main };
+}
+
 async function checkGasAndAlert(env: Env): Promise<{ vault: string; main: string | null; low: boolean }> {
-  const rpc = resolveBaseRpcUrl(env);
-  const vaultBal = await getEthBalance(env.VAULT_ADDRESS, rpc);
-  const mainBal = env.MAIN_WALLET ? await getEthBalance(env.MAIN_WALLET, rpc) : null;
+  const primaryRpc = resolveBaseRpcUrl(env);
+  const fallbackRpc = env.BASE_RPC_URL?.trim();
+
+  let bals: { vault: bigint; main: bigint | null };
+  try {
+    bals = await readWalletBalances(primaryRpc, env);
+  } catch (primaryErr) {
+    if (!fallbackRpc) throw primaryErr;
+    // Alchemy capacity/rate limit hit — degrade to public Base RPC.
+    bals = await readWalletBalances(fallbackRpc, env);
+  }
+
+  const vaultBal = bals.vault;
+  const mainBal = bals.main;
 
   const low = vaultBal < GAS_LOW_THRESHOLD_WEI || (mainBal !== null && mainBal < GAS_LOW_THRESHOLD_WEI);
 
