@@ -767,7 +767,14 @@ async function checkGasAndAlert(env: Env): Promise<{ vault: string; main: string
   const vaultBal = bals.vault;
   const mainBal = bals.main;
 
-  const low = vaultBal < GAS_LOW_THRESHOLD_WEI || (mainBal !== null && mainBal < GAS_LOW_THRESHOLD_WEI);
+  // Only wallets that SIGN transactions can run out of gas. VAULT_ADDRESS is
+  // `payTo` — the payer signs the EIP-3009 authorization and the facilitator
+  // submits the settlement, so the vault never spends gas and an empty one is
+  // the normal resting state for an external receive-only address. Alerting on
+  // it would page forever and bury the signal this check exists for: MAIN_WALLET
+  // running dry and being unable to sign. Vault balance is still reported below
+  // for revenue visibility.
+  const low = mainBal !== null && mainBal < GAS_LOW_THRESHOLD_WEI;
 
   const fmt = (w: bigint) => `${(Number(w) / 1e18).toFixed(6)} ETH`;
   const result = { vault: fmt(vaultBal), main: mainBal !== null ? fmt(mainBal) : null, low };

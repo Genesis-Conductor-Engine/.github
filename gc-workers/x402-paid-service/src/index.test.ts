@@ -506,7 +506,7 @@ describe('x402 Worker gas monitoring', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('sends an alert and returns unavailable when gas is below threshold', async () => {
+  it('sends an alert and returns unavailable when the signing wallet is below threshold', async () => {
     const fetchMock = stubFetch((input) => {
       if (String(input) === 'https://alert.example/hook') {
         return new Response(null, { status: 204 });
@@ -516,19 +516,48 @@ describe('x402 Worker gas monitoring', () => {
 
     const { response } = await dispatch('/health/gas', {}, {
       ALCHEMY_BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/test',
+      MAIN_WALLET: '0x000000000000000000000000000000000000BEEF',
       GAS_ALERT_WEBHOOK: 'https://alert.example/hook',
     });
 
     expect(response.status).toBe(503);
     await expect(responseJson<Record<string, unknown>>(response)).resolves.toMatchObject({
       vault: '0.000000 ETH',
-      main: null,
+      main: '0.000000 ETH',
       low: true,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Two balance reads, then the webhook.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenLastCalledWith('https://alert.example/hook', expect.objectContaining({
       method: 'POST',
     }));
+  });
+
+  it('does not alert when only the receive-only vault is empty', async () => {
+    // The vault is `payTo`: the payer signs the EIP-3009 authorization and the
+    // facilitator submits settlement, so the vault never spends gas. An
+    // externally-held revenue address resting at zero is normal, and paging on
+    // it would fire every cron forever and bury a real MAIN_WALLET outage.
+    const fetchMock = stubFetch((_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { params: [string, string] };
+      const isVault = body.params[0].toLowerCase() === VAULT.toLowerCase();
+      return Response.json({ result: isVault ? '0x0' : '0x2386f26fc10000' });
+    });
+
+    const { response } = await dispatch('/health/gas', {}, {
+      ALCHEMY_BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/test',
+      MAIN_WALLET: '0x000000000000000000000000000000000000BEEF',
+      GAS_ALERT_WEBHOOK: 'https://alert.example/hook',
+    });
+
+    expect(response.status).toBe(200);
+    await expect(responseJson<Record<string, unknown>>(response)).resolves.toEqual({
+      vault: '0.000000 ETH',
+      main: '0.010000 ETH',
+      low: false,
+    });
+    // Exactly the two balance reads — no webhook call.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('returns bad gateway when the configured Alchemy balance call fails', async () => {
