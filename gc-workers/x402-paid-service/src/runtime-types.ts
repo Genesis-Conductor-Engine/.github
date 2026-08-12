@@ -24,8 +24,12 @@ export interface ScheduledEvent {
   cron: string;
 }
 
-// KVNamespace is declared in Env but unused by the handler.
-export type KVNamespace = unknown;
+// Minimal KV surface — only what high-tier fulfillment uses to index issued
+// licence keys. In Node the binding is simply absent and callers optional-chain.
+export interface KVNamespace {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+}
 
 // AnalyticsEngineDataset is used optionally (env.ANALYTICS?.writeDataPoint) to
 // record settled payments. In the Cloudflare deployment the real binding is

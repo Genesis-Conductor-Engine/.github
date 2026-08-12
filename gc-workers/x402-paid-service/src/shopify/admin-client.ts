@@ -125,6 +125,42 @@ export function summarizeOrders(orders: NormalizedOrder[]): Omit<RevenueSummary,
   return { oneTimeRevenueCents, paidOrderCount: paid.length, bySource };
 }
 
+/**
+ * Validated against the live Admin schema (2024-10). Requires the token to hold
+ * `write_orders` + `read_orders`; without them this fails at the API, not here.
+ */
+const ORDER_CREATE_MUTATION = `
+  mutation CreatePaidOrder($order: OrderCreateOrderInput!) {
+    orderCreate(order: $order) {
+      order {
+        id
+        name
+        statusPageUrl
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }`;
+
+export interface CreatePaidOrderInput {
+  /** Product variant GID, e.g. "gid://shopify/ProductVariant/123". */
+  variantId: string;
+  quantity?: number;
+  email?: string;
+  note?: string;
+  /** Surfaced on the order in the Shopify admin — used here for the audit trail. */
+  customAttributes?: { key: string; value: string }[];
+  tags?: string[];
+}
+
+export interface CreatedOrder {
+  id: string;
+  name: string;
+  statusPageUrl: string | null;
+}
+
 const ORDERS_QUERY = `
   query PaidOrders($first: Int!, $query: String) {
     orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
@@ -200,6 +236,47 @@ export class ShopifyAdminClient {
     }
     if (!json.data) throw new Error("Shopify Admin API returned no data");
     return json.data;
+  }
+
+  /**
+   * Create an order already marked PAID.
+   *
+   * Called only after on-chain settlement is confirmed, so the money exists
+   * before the order does — `financialStatus: PAID` records that fact rather
+   * than asserting it optimistically.
+   *
+   * The charged amount is recorded in `customAttributes`, not `priceSet`: the
+   * variant's own price is authoritative for the order total, and the on-chain
+   * figure is what we need for reconciliation if the two ever drift.
+   *
+   * Throws on transport failure, GraphQL errors, or userErrors — the caller is
+   * responsible for degrading gracefully, since the buyer has already paid.
+   */
+  async createPaidOrder(input: CreatePaidOrderInput): Promise<CreatedOrder> {
+    const data = await this.graphql<{
+      orderCreate: {
+        order: CreatedOrder | null;
+        userErrors: { field: string[] | null; message: string }[];
+      };
+    }>(ORDER_CREATE_MUTATION, {
+      order: {
+        financialStatus: "PAID",
+        lineItems: [{ variantId: input.variantId, quantity: input.quantity ?? 1 }],
+        ...(input.email ? { email: input.email } : {}),
+        ...(input.note ? { note: input.note } : {}),
+        ...(input.customAttributes?.length ? { customAttributes: input.customAttributes } : {}),
+        ...(input.tags?.length ? { tags: input.tags } : {}),
+      },
+    });
+
+    const { order, userErrors } = data.orderCreate;
+    if (userErrors?.length) {
+      throw new Error(
+        `Shopify orderCreate rejected: ${userErrors.map((e) => e.message).join("; ")}`
+      );
+    }
+    if (!order) throw new Error("Shopify orderCreate returned no order");
+    return order;
   }
 
   /** Fetch recent paid orders (one page). `query` is a Shopify search filter. */

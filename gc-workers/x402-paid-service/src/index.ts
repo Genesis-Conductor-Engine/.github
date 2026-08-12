@@ -2,6 +2,8 @@ import { encodePaymentRequiredHeader, decodePaymentSignatureHeader } from '@x402
 import { createCorrelationHeader } from '@coinbase/x402';
 import { declareDiscoveryExtension } from '@x402/extensions';
 import nacl from 'tweetnacl';
+import { ShopifyAdminClient } from './shopify/admin-client';
+import type { SecretBindings } from './lib/secrets';
 import type {
   ExecutionContext,
   ScheduledEvent,
@@ -68,7 +70,8 @@ const ETH_SETTLEMENT_ENABLED: boolean = true;
 
 // ── Env types ─────────────────────────────────────────────────────────────────
 interface Env {
-  API_KEYS: KVNamespace;
+  // Optional: present as a Worker binding, absent in the Node/Podman runtime.
+  API_KEYS?: KVNamespace;
   ANALYTICS: AnalyticsEngineDataset;
   VAULT_ADDRESS: string;
   USDC_ADDRESS: string;
@@ -95,6 +98,16 @@ interface Env {
   SHOPIFY_FOUNDERS_URL: string;
   SHOPIFY_SOURCE_EXCLUSIVE_URL: string;
   SHOPIFY_STORE_DOMAIN: string;
+  // Variant GIDs enable auto-fulfillment. Optional: without them the high tiers
+  // fall back to returning the static product URL rather than failing a paid call.
+  SHOPIFY_FOUNDERS_VARIANT_ID?: string;
+  SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID?: string;
+  // Resolved via lib/secrets at call time; declared so the Worker env binding
+  // (the only source that works in a Worker) type-checks.
+  SHOPIFY_ADMIN_TOKEN?: string;
+  SHOPIFY_SHOP_DOMAIN?: string;
+  /** Bearer token gating GET /health/revenue. Unset = endpoint disabled. */
+  REVENUE_TOKEN?: string;
   CDP_API_KEY_ID?: string;
   CDP_API_KEY_SECRET?: string;
   // Gas monitoring + Alchemy (Base RPC secret; optional key for Solana RPC)
@@ -126,6 +139,11 @@ interface TierConfig {
   asset: string;
   ethAsset: string;
   shopifyUrl?: (env: Env) => string;
+  /**
+   * Shopify product variant GID. Its presence is what makes a tier
+   * auto-fulfillable; `shopifyUrl` alone only yields a "go buy it" link.
+   */
+  shopifyVariantId?: (env: Env) => string | undefined;
 }
 
 const ETH_PRICING_ENABLED = (_env: Env): boolean => ETH_SETTLEMENT_ENABLED;
@@ -181,6 +199,7 @@ const TIERS: TierConfig[] = [
     asset: USDC_BASE,
     ethAsset: 'native',
     shopifyUrl: (e) => e.SHOPIFY_FOUNDERS_URL,
+    shopifyVariantId: (e) => e.SHOPIFY_FOUNDERS_VARIANT_ID,
   },
   {
     path: '/api/source-exclusive',
@@ -192,6 +211,7 @@ const TIERS: TierConfig[] = [
     asset: USDC_BASE,
     ethAsset: 'native',
     shopifyUrl: (e) => e.SHOPIFY_SOURCE_EXCLUSIVE_URL,
+    shopifyVariantId: (e) => e.SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID,
   },
 ];
 
@@ -437,6 +457,119 @@ async function facilitatorPost(endpoint: string, body: unknown, env: Env): Promi
   });
 }
 
+// ── Revenue reporting helpers ────────────────────────────────────────────────
+
+/**
+ * Constant-time string compare, so a bearer token cannot be recovered by
+ * timing a byte at a time. Length is compared first and does leak, which is
+ * the standard trade-off for a fixed-length secret.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Integer minor units to a 2dp major-unit number, without float accumulation. */
+function centsToUsd(cents: number): number {
+  return Math.round(cents) / 100;
+}
+
+// ── High-tier fulfillment ─────────────────────────────────────────────────────
+
+interface FulfillmentOutcome {
+  fulfillment_status: 'order_created' | 'pending_manual';
+  order_id: string | null;
+  order_status_url: string | null;
+  license_key: string | null;
+  /** Present only on the degraded path, so a human can reconcile the payment. */
+  support_ref?: string;
+}
+
+/**
+ * Turn a settled payment into a real Shopify order.
+ *
+ * Runs ONLY after settlement is confirmed, which makes its failure mode the
+ * important part: the buyer's money is already gone and cannot be clawed back.
+ * So this function never throws and never rejects — every failure degrades to
+ * `pending_manual`, which still returns 200 with the settlement tx and a
+ * support reference. Erroring here would take $4,999 and hand back a stack
+ * trace, and a retry would charge the buyer a second time.
+ *
+ * The Shopify order is the durable record: the license key is written into its
+ * customAttributes, so KV is only a fast lookup index and can be rebuilt from
+ * Shopify if the write below fails.
+ */
+async function fulfillHighTier(
+  env: Env,
+  tier: TierConfig,
+  payer: string,
+  settlementTx: string | null,
+  charged: { amount: string; asset: string },
+): Promise<FulfillmentOutcome> {
+  const supportRef = `${payer}:${settlementTx ?? 'no-tx'}`;
+  const degraded = (reason: string): FulfillmentOutcome => {
+    console.error(`[fulfill] ${tier.path} ${reason} — ref=${supportRef}`);
+    return {
+      fulfillment_status: 'pending_manual',
+      order_id: null,
+      order_status_url: null,
+      license_key: null,
+      support_ref: supportRef,
+    };
+  };
+
+  const variantId = tier.shopifyVariantId?.(env);
+  if (!variantId) return degraded('no variant id configured');
+
+  try {
+    const client = await ShopifyAdminClient.fromSecrets(env as unknown as SecretBindings);
+    const licenseKey = crypto.randomUUID();
+    const tierName = tier.path.replace('/api/', '');
+
+    const order = await client.createPaidOrder({
+      variantId,
+      quantity: 1,
+      note: `x402 agent-to-agent purchase. Payer ${payer}. Settlement ${settlementTx ?? 'unknown'}.`,
+      tags: ['x402', `tier:${tierName}`],
+      customAttributes: [
+        { key: 'x402_payer', value: payer },
+        { key: 'x402_settlement_tx', value: settlementTx ?? 'unknown' },
+        { key: 'x402_charged_amount', value: charged.amount },
+        { key: 'x402_charged_asset', value: charged.asset },
+        { key: 'license_key', value: licenseKey },
+      ],
+    });
+
+    // Index for fast validation. Best-effort: the order above already carries
+    // the key, so a failure here costs lookup speed, not the record itself.
+    try {
+      await env.API_KEYS?.put(
+        `license:${licenseKey}`,
+        JSON.stringify({
+          payer,
+          tier: tierName,
+          order_id: order.id,
+          settlement_tx: settlementTx,
+          issued_at: new Date().toISOString(),
+        }),
+      );
+    } catch (e) {
+      console.error(`[fulfill] license KV write failed for ${order.id} — ref=${supportRef}:`, e);
+    }
+
+    return {
+      fulfillment_status: 'order_created',
+      order_id: order.id,
+      order_status_url: order.statusPageUrl,
+      license_key: licenseKey,
+    };
+  } catch (e) {
+    return degraded(`order creation failed: ${String(e)}`);
+  }
+}
+
 // ── Tier handler ──────────────────────────────────────────────────────────────
 
 async function handleTier(
@@ -567,7 +700,23 @@ async function handleTier(
     console.error('[analytics] failed:', e);
   }
 
-  return Response.json({ ...result, payer: payerAddress, settlement_tx: settleResult.transaction ?? null });
+  const settlementTx = settleResult.transaction ?? null;
+
+  // Auto-fulfil tiers that map to a real product. Only reached once settlement
+  // is confirmed, and cannot throw — see fulfillHighTier.
+  const fulfillment = tier.shopifyVariantId
+    ? await fulfillHighTier(env, tier, payerAddress, settlementTx, {
+        amount,
+        asset: requestedEth ? 'ETH' : 'USDC',
+      })
+    : null;
+
+  return Response.json({
+    ...result,
+    payer: payerAddress,
+    settlement_tx: settlementTx,
+    ...(fulfillment ?? {}),
+  });
 }
 
 // ── Discovery builders ─────────────────────────────────────────────────────
@@ -844,6 +993,36 @@ export default {
         return Response.json(gas, { status: gas.low ? 503 : 200 });
       } catch (e) {
         return Response.json({ error: String(e) }, { status: 502 });
+      }
+    }
+
+    if (pathname === '/health/revenue') {
+      // Gross revenue and MRR are not public. No token configured means the
+      // endpoint stays off rather than silently exposing figures.
+      if (!env.REVENUE_TOKEN) {
+        return Response.json({ error: 'Revenue reporting is not configured' }, { status: 503 });
+      }
+      const authHeader = request.headers.get('Authorization') ?? '';
+      const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      if (!timingSafeEqual(presented, env.REVENUE_TOKEN)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      try {
+        const client = await ShopifyAdminClient.fromSecrets(env as unknown as SecretBindings);
+        const summary = await client.revenueSummary();
+        return Response.json({
+          // Recurring and one-time are reported separately and never summed —
+          // one-time GMV is not MRR (see admin-client integrity rule).
+          recurring_mrr_usd: centsToUsd(summary.recurringMrrCents),
+          one_time_revenue_usd: centsToUsd(summary.oneTimeRevenueCents),
+          paid_order_count: summary.paidOrderCount,
+          by_source_usd: Object.fromEntries(
+            Object.entries(summary.bySource).map(([k, v]) => [k, centsToUsd(v)]),
+          ),
+          generated_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        return Response.json({ error: 'Revenue lookup failed', detail: String(e) }, { status: 502 });
       }
     }
 

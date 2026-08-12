@@ -49,6 +49,16 @@ SHOPIFY_FOUNDERS_URL = "https://shop.genesisconductor.io/products/gc-founders-li
 SHOPIFY_SOURCE_EXCLUSIVE_URL = "https://shop.genesisconductor.io/products/gc-source-exclusive"
 # Shopify store domain for Admin API calls
 SHOPIFY_STORE_DOMAIN = "shop.genesisconductor.io"
+# Product variant GIDs — presence enables auto-fulfillment on the high tiers.
+# Until these hold real GIDs, a paid high-tier call still succeeds and returns
+# the settlement tx, but degrades to fulfillment_status "pending_manual".
+# Find one with: shopify product variant IDs, or the Admin API productByHandle.
+SHOPIFY_FOUNDERS_VARIANT_ID = ""
+SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID = ""
+# Secrets required for fulfillment + /health/revenue (set via `wrangler secret put`):
+#   SHOPIFY_ADMIN_TOKEN   Admin API token, needs write_orders + read_orders
+#   SHOPIFY_SHOP_DOMAIN   e.g. "my-store.myshopify.com" (NOT the storefront domain)
+#   REVENUE_TOKEN         bearer token gating GET /health/revenue
 # Gas monitoring — checked every 6h by cron
 # BASE_RPC_URL is a secret, not a var — set it with:
 #   wrangler secret put BASE_RPC_URL
