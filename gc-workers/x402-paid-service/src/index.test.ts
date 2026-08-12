@@ -32,6 +32,7 @@ type TestContext = ExecutionContext & {
 const HOST = 'https://worker.example';
 const VAULT = '0x000000000000000000000000000000000000dEaD';
 const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const USDC_POLYGON = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359';
 const WETH_BASE = '0x4200000000000000000000000000000000000006';
 const PUBLIC_FACILITATOR = 'https://x402.org/facilitator';
 const CDP_FACILITATOR = 'https://api.cdp.coinbase.com/platform/v2/x402';
@@ -290,12 +291,16 @@ describe('x402 Worker paid tier routes', () => {
       asset: USDC_BASE,
       payTo: VAULT,
     });
+    // Polygon must advertise POLYGON's USDC. Token addresses are per-chain, and
+    // the Base USDC address has no code on Polygon (verified with eth_getCode),
+    // so reusing it here would publish a requirement that can never settle.
     expect(body.accepts[1]).toMatchObject({
       network: 'eip155:137',
       amount: '10000',
-      asset: USDC_BASE,
+      asset: USDC_POLYGON,
       payTo: VAULT,
     });
+    expect(body.accepts[1].asset).not.toBe(USDC_BASE);
     expect(body.resource.url).toBe(`${HOST}/api/execute`);
     // Assert the invariant, not the marketing copy. The Bazaar renders these
     // descriptions; a listing without one is indistinguishable from a dead
@@ -308,6 +313,28 @@ describe('x402 Worker paid tier routes', () => {
     }
     expect(body.extensions.kind).toBe('discovery');
     expect(httpMocks.encodePaymentRequiredHeader).toHaveBeenCalledWith(expect.objectContaining({ x402Version: 2 }));
+  });
+
+  it('keeps the Polygon leg in USDC even when the caller pays in ETH', async () => {
+    // Polygon's native coin is POL, not ETH, and the ETH-denominated wei amount
+    // is meaningless there. Carrying the Base leg's 'native' asset across would
+    // advertise POL priced as if it were ether, labelled "USD Coin".
+    const { response } = await dispatch('/api/execute', {
+      method: 'POST',
+      headers: { 'X-PAYMENT-ASSET': 'ETH' },
+    });
+
+    const body = await responseJson<{
+      accepts: Array<{ network: string; asset: string; amount: string }>;
+    }>(response);
+
+    expect(response.status).toBe(402);
+    const polygon = body.accepts.find((a) => a.network === 'eip155:137');
+    expect(polygon).toBeDefined();
+    expect(polygon!.asset).toBe(USDC_POLYGON);
+    expect(polygon!.asset).not.toBe('native');
+    // Priced in USDC minor units, not the ETH wei figure the Base leg uses.
+    expect(polygon!.amount).toBe('10000');
   });
 
   it('accepts an explicit USDC payment-asset request', async () => {

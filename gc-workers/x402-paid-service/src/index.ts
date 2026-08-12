@@ -59,6 +59,13 @@ async function createCdpAuthHeader(
 }
 const X402_VERSION = 2;
 const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+/**
+ * Circle's native USDC on Polygon — a DIFFERENT contract from Base's.
+ * Token addresses are per-chain: the Base USDC address has no code at all on
+ * Polygon (verified via eth_getCode), so advertising it under eip155:137 gives
+ * agents a payment requirement that can never settle.
+ */
+const USDC_POLYGON = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359';
 const NETWORK = 'eip155:8453';
 const NETWORK_POLYGON = 'eip155:137';
 const MAX_TIMEOUT_SECONDS = 60;
@@ -304,7 +311,12 @@ async function verifySolanaUsdcTransfer(
 
 // ── x402 helpers ──────────────────────────────────────────────────────────────
 
-function buildPaymentRequired(requestUrl: string, amount: string, payTo: string, asset: string, description: string, ethAmount?: string) {
+/**
+ * `amount`/`asset` describe the Base leg the caller asked for (USDC, or native
+ * ETH when they set X-PAYMENT-ASSET). `usdcAmount` is always the USDC-denominated
+ * price, needed because the Polygon leg is USDC-only and cannot use an ETH amount.
+ */
+function buildPaymentRequired(requestUrl: string, amount: string, payTo: string, asset: string, description: string, ethAmount?: string, usdcAmount: string = amount) {
   // Bazaar discovery (v2 extensions field, official SDK)
   // `description` reaches the Bazaar listing. Without it the service renders
   // as a bare URL with no price or purpose, which is indistinguishable from a
@@ -349,12 +361,19 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
 
   const accepts: Array<typeof primaryAccept> = [primaryAccept];
 
-  // Add Polygon USDC acceptance
+  // Polygon USDC acceptance.
+  //
+  // Deliberately does NOT reuse `asset`/`amount` from the Base leg. `asset` is
+  // the Base USDC contract (or 'native' when the caller asked to pay in ETH),
+  // and neither is meaningful on Polygon: the Base USDC address has no code
+  // there, and Polygon's native coin is POL, not ETH. Advertising either one
+  // hands the agent a requirement that can never settle. USDC is always priced
+  // in 6-decimal units, so the USDC amount carries over; the ETH amount cannot.
   accepts.push({
     scheme: 'exact' as const,
     network: NETWORK_POLYGON,
-    asset,
-    amount,
+    asset: USDC_POLYGON,
+    amount: usdcAmount,
     payTo,
     description,
     mimeType: 'application/json',
@@ -600,7 +619,7 @@ async function handleTier(
   const amount = requestedEth ? ethAmount : primaryAmount;
   const asset = requestedEth ? 'native' : primaryAsset;
 
-  const paymentRequired = buildPaymentRequired(request.url, amount, payTo, asset, tier.description, ethAmount);
+  const paymentRequired = buildPaymentRequired(request.url, amount, payTo, asset, tier.description, ethAmount, primaryAmount);
   const paymentRequirements = paymentRequired.accepts[0];
 
   const sigHeader = request.headers.get('PAYMENT-SIGNATURE') ?? request.headers.get('X-PAYMENT');
