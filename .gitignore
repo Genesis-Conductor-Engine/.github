@@ -62,3 +62,9 @@
 **/*token*.txt
 **/*recovery*code*.txt
 gha-creds-*.json
+
+# Holds a live Alchemy API key in plaintext, and the !/gc-workers/x402-paid-service/**
+# negation above would otherwise make it committable. The key is not recorded in
+# the sops vault or any env file, so the file must stay on disk — it just must
+# never ship. Redact the key and vault it before removing this rule.
+/gc-workers/x402-paid-service/DEPLOYMENT_STATUS.md
