@@ -20,6 +20,10 @@ Worker routes:
 - `POST /webhooks/treasury` — Alchemy `ADDRESS_ACTIVITY` or `{direction,asset,amount}`
 - Cron (every 6h) refreshes the snapshot into existing KV `API_KEYS`
 
+## Live book (2026-08-15T12:16Z snapshot)
+
+Priced ~$83,270 · settlement 55,026 USDC · HOT/payTo 2.04 USDC · treasury 14.667 ETH + 710 USDC · MAIN 0 ETH. wQFLOP unpriced (DexPaprika 0 pools). Window ROI −15.8% on prose open 61,745.
+
 ## Observed ROI (settlement USDC, 2026-08-09 → 15)
 
 - Opening (prose): 61,745

@@ -28,10 +28,8 @@ dataset = "x402_engagement_metrics"
 # Facilitator mode: "cdp" routes through Coinbase CDP (production-grade).
 # Change to "public" to fall back to the rate-limited x402.org/facilitator.
 X402_FACILITATOR_MODE = "cdp"
-# Receive-only revenue address. Externally held (MetaMask) — no private key for
-# it exists on this server or in any vault, which is the point: the worker only
-# ever needs to NAME this address (`payTo`), never sign for it. Replaces
-# 0x60C4…77d9, whose key LAUNCH_PLAN.md flags as compromised and unrotated.
+# x402 payTo = HOT. Worker only names this address (never signs). Must match all
+# 7 payTo fields in bazaar-listing.json. Do not revert to 0x7cb8….
 VAULT_ADDRESS = "0x60C4499870f115664d7FfD8411b023DBEf3377d9"
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 CHAIN_ID = "8453"
