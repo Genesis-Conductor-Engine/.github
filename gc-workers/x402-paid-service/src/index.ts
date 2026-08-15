@@ -443,6 +443,16 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
   };
 }
 
+/** awal / x402 v2 clients often send {x402Version, payload} without `accepted`. */
+export function normalizePaymentPayload(decoded: unknown, accepted: unknown): unknown {
+  if (!decoded || typeof decoded !== 'object') return decoded;
+  const rec = decoded as Record<string, unknown>;
+  if (rec.payload && rec.accepted == null) {
+    return { ...rec, accepted };
+  }
+  return decoded;
+}
+
 function payment402(paymentRequired: ReturnType<typeof buildPaymentRequired>, error?: string): Response {
   const body = error ? { ...paymentRequired, error } : paymentRequired;
   return new Response(JSON.stringify(body), {
@@ -641,12 +651,15 @@ async function handleTier(
 
   let paymentPayload: unknown;
   try {
-    paymentPayload = decodePaymentSignatureHeader(sigHeader);
+    paymentPayload = normalizePaymentPayload(
+      decodePaymentSignatureHeader(sigHeader),
+      paymentRequirements,
+    );
   } catch {
     return Response.json({ error: 'Invalid payment signature' }, { status: 400 });
   }
 
-  let verifyResult: { isValid: boolean; invalidReason?: string; payer?: string };
+  let verifyResult: { isValid: boolean; invalidReason?: string; invalidMessage?: string; payer?: string };
   try {
     const verifyResp = await facilitatorPost('verify', {
       x402Version: X402_VERSION,
@@ -656,6 +669,7 @@ async function handleTier(
 
     if (!verifyResp.ok) {
       const txt = await verifyResp.text();
+      console.error(`[verify] facilitator HTTP ${verifyResp.status}: ${txt}`);
       return payment402(paymentRequired, `Facilitator error: ${txt}`);
     }
     verifyResult = (await verifyResp.json()) as typeof verifyResult;
@@ -664,7 +678,8 @@ async function handleTier(
   }
 
   if (!verifyResult.isValid) {
-    return payment402(paymentRequired, verifyResult.invalidReason ?? 'Payment invalid');
+    console.error(`[verify] invalid: ${verifyResult.invalidReason ?? verifyResult.invalidMessage ?? 'Payment invalid'}`);
+    return payment402(paymentRequired, verifyResult.invalidReason ?? verifyResult.invalidMessage ?? 'Payment invalid');
   }
 
   const body = await request.json().catch(() => ({}));

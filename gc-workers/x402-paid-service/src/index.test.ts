@@ -485,6 +485,35 @@ describe('x402 Worker paid tier routes', () => {
     expect(ctx.waitUntil).not.toHaveBeenCalled();
   });
 
+  it('fills accepted on a v2 payload so CDP verify sees the requirement awal omitted', async () => {
+    httpMocks.decodePaymentSignatureHeader.mockReturnValueOnce({
+      x402Version: 2,
+      payload: {
+        authorization: {
+          from: '0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8',
+          to: VAULT,
+        },
+      },
+    });
+    stubFetch((input, init) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        paymentPayload?: { accepted?: { amount?: string; payTo?: string } };
+      };
+      if (String(input).endsWith('/verify')) {
+        expect(body.paymentPayload?.accepted).toMatchObject({ amount: '10000', payTo: VAULT });
+        return Response.json({ isValid: true, payer: '0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8' });
+      }
+      return Response.json({ success: true, transaction: '0xNorm' });
+    });
+
+    const { response } = await dispatch('/api/execute', {
+      method: 'POST',
+      headers: { 'PAYMENT-SIGNATURE': 'awal-v2', 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    expect(response.status).toBe(200);
+  });
+
   it('returns Shopify fulfillment details and USDC charges for premium paid tiers', async () => {
     stubFetch((input) => {
       if (String(input).endsWith('/verify')) {
