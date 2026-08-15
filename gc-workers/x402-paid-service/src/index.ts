@@ -444,6 +444,42 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
   };
 }
 
+function payloadPayer(decoded: unknown): string | null {
+  if (!decoded || typeof decoded !== 'object') return null;
+  const rec = decoded as Record<string, unknown>;
+  const payload = rec.payload;
+  if (!payload || typeof payload !== 'object') return null;
+  const auth = (payload as Record<string, unknown>).authorization;
+  if (!auth || typeof auth !== 'object') return null;
+  const from = (auth as Record<string, unknown>).from;
+  return typeof from === 'string' && from.startsWith('0x') ? from : null;
+}
+
+export async function describeVerifyFailure(
+  facilitatorBody: string,
+  decoded: unknown,
+  rpcUrl: string,
+): Promise<string> {
+  const payer = payloadPayer(decoded);
+  let contractPayer = false;
+  if (payer) {
+    try {
+      const resp = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getCode', params: [payer, 'latest'] }),
+      });
+      const json = (await resp.json()) as { result?: string };
+      const code = json.result ?? '0x';
+      contractPayer = code !== '0x' && code !== '0x0';
+    } catch { /* keep generic */ }
+  }
+  if (contractPayer) {
+    return 'payer is a contract (smart wallet). x402 exact EIP-3009 USDC requires an EOA; awal/Coinbase Smart Wallet signatures revert on transferWithAuthorization.';
+  }
+  return `Facilitator error: ${facilitatorBody}`;
+}
+
 /** CDP verify only accepts the v2 PaymentRequirements strip — no outputSchema/description. */
 export function slimPaymentRequirements(req: unknown): Record<string, unknown> | unknown {
   if (!req || typeof req !== 'object') return req;
@@ -696,7 +732,8 @@ async function handleTier(
     if (!verifyResp.ok) {
       const txt = await verifyResp.text();
       console.error(`[verify] facilitator HTTP ${verifyResp.status}: ${txt}`);
-      return payment402(paymentRequired, `Facilitator error: ${txt}`);
+      const hint = await describeVerifyFailure(txt, paymentPayload, cashflowRpc(env));
+      return payment402(paymentRequired, hint);
     }
     verifyResult = (await verifyResp.json()) as typeof verifyResult;
   } catch (e) {

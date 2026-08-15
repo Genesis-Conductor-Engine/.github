@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext, ScheduledEvent } from './runtime-types';
+import { describeVerifyFailure } from './index';
 
 const httpMocks = vi.hoisted(() => ({
   encodePaymentRequiredHeader: vi.fn(() => 'encoded-payment-required'),
@@ -560,6 +561,22 @@ describe('x402 Worker paid tier routes', () => {
     expect(body).toHaveProperty('x402Version');
     expect(body).toHaveProperty('accepts');
     expect(body).toHaveProperty('extensions');
+  });
+});
+
+describe('describeVerifyFailure', () => {
+  it('names smart-wallet payers so the next EOA can complete the cash trigger', async () => {
+    stubFetch(() => Response.json({ result: '0x363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc57' }));
+    const msg = await describeVerifyFailure(
+      '{"invalidReason":"invalid_payload"}',
+      {
+        x402Version: 2,
+        payload: { authorization: { from: '0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8' } },
+      },
+      'https://mainnet.base.org',
+    );
+    expect(msg).toContain('smart wallet');
+    expect(msg).toContain('EOA');
   });
 });
 
