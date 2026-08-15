@@ -3,6 +3,14 @@ import { createCorrelationHeader } from '@coinbase/x402';
 import { declareDiscoveryExtension } from '@x402/extensions';
 import nacl from 'tweetnacl';
 import { ShopifyAdminClient } from './shopify/admin-client';
+import {
+  PUBLIC_BASE_RPC,
+  appendLedger,
+  buildCashflowHtml,
+  loadSnapshot,
+  parseWebhook,
+  refreshSnapshot,
+} from './lib/cashflow';
 import type { SecretBindings } from './lib/secrets';
 import type {
   ExecutionContext,
@@ -123,6 +131,8 @@ interface Env {
   ALCHEMY_API_KEY?: string;
   MAIN_WALLET?: string;
   GAS_ALERT_WEBHOOK?: string;
+  /** Optional shared secret for POST /webhooks/treasury. Unset = accept unsigned events. */
+  TREASURY_WEBHOOK_SECRET?: string;
 }
 
 /** Prefer configured Solana RPC; fall back to Alchemy Solana if key present. */
@@ -889,6 +899,21 @@ function isAllowedAlchemyRpcUrl(rawUrl: string): boolean {
   }
 }
 
+function cashflowKv(env: Env): { get(key: string): Promise<string | null>; put(key: string, value: string): Promise<void> } | undefined {
+  const kv = env.API_KEYS;
+  if (!kv) return undefined;
+  return {
+    get: (key) => kv.get(key),
+    put: (key, value) => kv.put(key, value),
+  };
+}
+
+function cashflowRpc(env: Env): string {
+  const fallback = env.BASE_RPC_URL?.trim();
+  if (fallback) return fallback;
+  return PUBLIC_BASE_RPC;
+}
+
 function resolveBaseRpcUrl(env: Env): string {
   const rpcUrl = env.ALCHEMY_BASE_RPC_URL?.trim();
   if (!rpcUrl) {
@@ -981,7 +1006,7 @@ export default {
   <p>Six tiers of paid API access — pay <strong>USDC</strong> or <strong>ETH</strong> on Base, or <strong>USDC</strong> on Solana.</p>
   <table border="1" cellpadding="4"><thead><tr><th>Endpoint</th><th>Price</th><th>Description</th></tr></thead>
   <tbody>${tierRows}</tbody></table>
-  <p>See <a href="/llms.txt">/llms.txt</a> or <a href="/.well-known/x402">/.well-known/x402</a> for payment details.</p>
+  <p>See <a href="/llms.txt">/llms.txt</a>, <a href="/.well-known/x402">/.well-known/x402</a>, or the <a href="/cashflow">internal cashflow dashboard</a>.</p>
 </body></html>`;
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
@@ -1004,6 +1029,65 @@ export default {
           cloudflare: true,
         },
       });
+    }
+
+    if (pathname === '/cashflow' && request.method === 'GET') {
+      try {
+        const kv = cashflowKv(env);
+        const snap = await refreshSnapshot(kv, cashflowRpc(env));
+        return new Response(buildCashflowHtml(snap, hostname), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
+      } catch (e) {
+        const cached = await loadSnapshot(cashflowKv(env));
+        if (cached) {
+          return new Response(buildCashflowHtml(cached, hostname), {
+            headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+          });
+        }
+        return Response.json({ error: 'cashflow refresh failed', detail: String(e) }, { status: 502 });
+      }
+    }
+
+    if (pathname === '/api/cashflow' && request.method === 'GET') {
+      try {
+        const snap = await refreshSnapshot(cashflowKv(env), cashflowRpc(env));
+        return Response.json(snap, { headers: { 'Cache-Control': 'no-store' } });
+      } catch (e) {
+        const cached = await loadSnapshot(cashflowKv(env));
+        if (cached) return Response.json(cached);
+        return Response.json({ error: 'cashflow refresh failed', detail: String(e) }, { status: 502 });
+      }
+    }
+
+    if (pathname === '/webhooks/treasury' && request.method === 'POST') {
+      const secret = env.TREASURY_WEBHOOK_SECRET?.trim();
+      if (secret) {
+        const presented = request.headers.get('X-Treasury-Hook') ?? '';
+        if (!timingSafeEqual(presented, secret)) {
+          return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+      }
+      const body = await request.json().catch(() => null);
+      const events = parseWebhook(body);
+      if (events.length === 0) {
+        return Response.json({ error: 'unrecognized webhook payload' }, { status: 400 });
+      }
+      const ledger = await appendLedger(cashflowKv(env), events);
+      ctx.waitUntil(
+        Promise.resolve().then(() => {
+          try {
+            env.ANALYTICS?.writeDataPoint({
+              blobs: ['treasury_webhook', events[0].source, events[0].asset],
+              doubles: [events.reduce((s, e) => s + e.amount, 0)],
+              indexes: [events[0].direction],
+            });
+          } catch (e) {
+            console.error('[treasury-webhook] analytics failed:', e);
+          }
+        }),
+      );
+      return Response.json({ accepted: events.length, ledger_size: ledger.length });
     }
 
     if (pathname === '/health/gas') {
@@ -1131,7 +1215,7 @@ export default {
 
     if (pathname === '/sitemap.xml') {
       const base = `https://${hostname}`;
-      const urls = ['/', '/health', '/.well-known/x402', '/openapi.json', '/llms.txt']
+      const urls = ['/', '/health', '/cashflow', '/api/cashflow', '/.well-known/x402', '/openapi.json', '/llms.txt']
         .map((p) => `  <url><loc>${base}${p}</loc></url>`)
         .join('\n');
       return new Response(
@@ -1199,6 +1283,17 @@ export default {
         console.log('[cron/gas-check]', JSON.stringify(gas));
       }).catch((e) => {
         console.error('[cron/gas-check] error:', e);
+      }),
+    );
+    ctx.waitUntil(
+      refreshSnapshot(cashflowKv(env), cashflowRpc(env)).then((snap) => {
+        console.log('[cron/cashflow]', JSON.stringify({
+          priced_usd: snap.priced_usd,
+          working_capital_usdc: snap.working_capital_usdc,
+          roi: snap.roi.period_roi_on_prose_open,
+        }));
+      }).catch((e) => {
+        console.error('[cron/cashflow] error:', e);
       }),
     );
   },

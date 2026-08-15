@@ -515,6 +515,71 @@ describe('x402 Worker paid tier routes', () => {
   });
 });
 
+describe('x402 Worker cashflow surface', () => {
+  function memoryKv() {
+    const store = new Map<string, string>();
+    return {
+      get: async (key: string) => store.get(key) ?? null,
+      put: async (key: string, value: string) => { store.set(key, value); },
+    };
+  }
+
+  it('serves the cashflow dashboard and JSON snapshot', async () => {
+    stubFetch((input, init) => {
+      const url = String(input);
+      if (url.includes('coinpaprika')) {
+        return Response.json({ quotes: { USD: { price: 2000 } } });
+      }
+      const payload = JSON.parse(String(init?.body ?? '{}')) as { method?: string };
+      if (payload.method === 'eth_getBalance' || payload.method === 'eth_call') {
+        return Response.json({ result: '0x0' });
+      }
+      return Response.json({ result: '0x0' });
+    });
+
+    const kv = memoryKv();
+    const page = await dispatch('/cashflow', {}, { API_KEYS: kv, BASE_RPC_URL: 'https://mainnet.base.org' });
+    expect(page.response.status).toBe(200);
+    expect(page.response.headers.get('Content-Type')).toContain('text/html');
+    await expect(page.response.text()).resolves.toContain('Internal cashflow');
+
+    const json = await dispatch('/api/cashflow', {}, { API_KEYS: kv, BASE_RPC_URL: 'https://mainnet.base.org' });
+    expect(json.response.status).toBe(200);
+    const body = await responseJson<{ priced_usd: number; roi: { period_net_usdc: number } }>(json.response);
+    expect(body.roi.period_net_usdc).toBe(-9752.961319);
+    expect(body.priced_usd).toBe(0);
+  });
+
+  it('ingests a treasury webhook into the ledger', async () => {
+    const kv = memoryKv();
+    const { response } = await dispatch('/webhooks/treasury', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'manual',
+        direction: 'out',
+        asset: 'USDC',
+        amount: 12.5,
+        note: 'alchemy settle placeholder',
+      }),
+    }, { API_KEYS: kv });
+    expect(response.status).toBe(200);
+    await expect(responseJson<{ accepted: number; ledger_size: number }>(response)).resolves.toEqual({
+      accepted: 1,
+      ledger_size: 1,
+    });
+  });
+
+  it('rejects treasury webhooks when the shared secret does not match', async () => {
+    const { response } = await dispatch('/webhooks/treasury', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direction: 'in', asset: 'USDC', amount: 1 }),
+    }, { TREASURY_WEBHOOK_SECRET: 'expected' });
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('x402 Worker gas monitoring', () => {
   it('reports healthy vault and main wallet gas balances', async () => {
     const fetchMock = stubFetch(() => Response.json({ result: '0x2386f26fc10000' }));
@@ -630,7 +695,7 @@ describe('x402 Worker gas monitoring', () => {
     await worker.scheduled({} as ScheduledEvent, buildEnv({
       ALCHEMY_BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/test',
     }) as never, ctx as never);
-    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(2);
     await Promise.all(ctx.pending);
 
     expect(logSpy).toHaveBeenCalledWith('[cron/gas-check]', JSON.stringify({
