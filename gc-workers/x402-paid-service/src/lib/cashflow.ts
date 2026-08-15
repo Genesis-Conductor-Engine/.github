@@ -6,10 +6,13 @@
  */
 
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+export const WETH_BASE = '0x4200000000000000000000000000000000000006';
+export const WQFLOP_BASE = '0x69262A2D7c92c074729823B654fE7E4Cdb749747';
 export const PUBLIC_BASE_RPC = 'https://mainnet.base.org';
 export const SNAPSHOT_KEY = 'cashflow:snapshot';
 export const LEDGER_KEY = 'cashflow:ledger';
 export const LEDGER_MAX = 200;
+export const FALLBACK_ETH_USD = 1877.49;
 
 export const FLEET = [
   { id: 'treasury', role: 'Root treasury (locked)', address: '0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75' },
@@ -69,6 +72,19 @@ export interface WalletSnap {
   usd: number;
 }
 
+export interface WqflopMark {
+  priced: boolean;
+  price_usd: number | null;
+  liquidity_usd: number | null;
+  pools: number;
+  note: string;
+}
+
+export interface MarketMarks {
+  eth_source: 'dexpaprika' | 'coinpaprika' | 'fallback';
+  wqflop: WqflopMark;
+}
+
 export interface CashflowSnapshot {
   generated_at: string;
   eth_usd: number;
@@ -80,6 +96,8 @@ export interface CashflowSnapshot {
   vendors: typeof VENDORS;
   ledger: LedgerEvent[];
   assumptions: string[];
+  freshness?: 'live' | 'cached';
+  marks?: MarketMarks;
 }
 
 export interface RoiModel {
@@ -236,15 +254,79 @@ async function rpc(url: string, method: string, params: unknown[]): Promise<stri
   return json.result;
 }
 
-export async function fetchEthUsd(): Promise<number> {
-  const resp = await fetch('https://api.coinpaprika.com/v1/tickers/eth-ethereum', {
+export function parseDexTokenPrice(json: unknown): number | null {
+  if (!json || typeof json !== 'object') return null;
+  const rec = json as Record<string, unknown>;
+  const fromSummary = rec.summary && typeof rec.summary === 'object'
+    ? (rec.summary as Record<string, unknown>).price_usd
+    : undefined;
+  const raw = fromSummary ?? rec.price_usd;
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null;
+  return raw;
+}
+
+export function parseDexPoolCount(json: unknown): number {
+  if (!json || typeof json !== 'object') return 0;
+  const rec = json as Record<string, unknown>;
+  if (Array.isArray(rec.results)) return rec.results.length;
+  if (Array.isArray(rec.pools)) return rec.pools.length;
+  return 0;
+}
+
+async function fetchJson(url: string, ms = 2500): Promise<unknown> {
+  const resp = await fetch(url, {
     headers: { 'User-Agent': 'gc-cashflow/1.0' },
+    signal: AbortSignal.timeout(ms),
   });
-  if (!resp.ok) throw new Error(`eth price http ${resp.status}`);
-  const json = (await resp.json()) as { quotes?: { USD?: { price?: number } } };
+  if (!resp.ok) throw new Error(`http ${resp.status} ${url}`);
+  return resp.json();
+}
+
+export async function fetchEthUsd(): Promise<number> {
+  const json = await fetchJson('https://api.coinpaprika.com/v1/tickers/eth-ethereum') as {
+    quotes?: { USD?: { price?: number } };
+  };
   const price = json.quotes?.USD?.price;
   if (!price) throw new Error('eth price missing');
   return price;
+}
+
+export async function fetchMarketMarks(): Promise<{ eth_usd: number; marks: MarketMarks }> {
+  const unpriced: WqflopMark = {
+    priced: false,
+    price_usd: null,
+    liquidity_usd: null,
+    pools: 0,
+    note: 'DexPaprika lists wQFLOP on Base but reports 0 pools and no price_usd — paper supply, not a mark.',
+  };
+
+  const [weth, wqflopToken, wqflopPools, paprika] = await Promise.allSettled([
+    fetchJson(`https://api.dexpaprika.com/networks/base/tokens/${WETH_BASE.toLowerCase()}`),
+    fetchJson(`https://api.dexpaprika.com/networks/base/tokens/${WQFLOP_BASE.toLowerCase()}`),
+    fetchJson(`https://api.dexpaprika.com/networks/base/pools/search?token_address=${WQFLOP_BASE.toLowerCase()}&limit=5`),
+    fetchEthUsd(),
+  ]);
+
+  const wethPx = weth.status === 'fulfilled' ? parseDexTokenPrice(weth.value) : null;
+  const wqPx = wqflopToken.status === 'fulfilled' ? parseDexTokenPrice(wqflopToken.value) : null;
+  const pools = wqflopPools.status === 'fulfilled' ? parseDexPoolCount(wqflopPools.value) : 0;
+  const paprikaPx = paprika.status === 'fulfilled' ? paprika.value : null;
+
+  let eth_usd = FALLBACK_ETH_USD;
+  let eth_source: MarketMarks['eth_source'] = 'fallback';
+  if (wethPx) {
+    eth_usd = wethPx;
+    eth_source = 'dexpaprika';
+  } else if (paprikaPx) {
+    eth_usd = paprikaPx;
+    eth_source = 'coinpaprika';
+  }
+
+  const wqflop: WqflopMark = wqPx
+    ? { priced: true, price_usd: wqPx, liquidity_usd: null, pools, note: 'DexPaprika spot — still not working capital.' }
+    : { ...unpriced, pools };
+
+  return { eth_usd, marks: { eth_source, wqflop } };
 }
 
 async function rpcFirst(urls: string[], method: string, params: unknown[]): Promise<string> {
@@ -263,16 +345,27 @@ export async function refreshSnapshot(
   kv: KvLike | undefined,
   rpcUrl: string = PUBLIC_BASE_RPC,
 ): Promise<CashflowSnapshot> {
-  let ethUsd = 1877.49;
+  let ethUsd = FALLBACK_ETH_USD;
+  let marks: MarketMarks = {
+    eth_source: 'fallback',
+    wqflop: {
+      priced: false,
+      price_usd: null,
+      liquidity_usd: null,
+      pools: 0,
+      note: 'DexPaprika wQFLOP mark unavailable this refresh.',
+    },
+  };
   try {
-    ethUsd = await fetchEthUsd();
+    const market = await fetchMarketMarks();
+    ethUsd = market.eth_usd;
+    marks = market.marks;
   } catch {
     // keep last-known mark
   }
 
   const rpcUrls = [...new Set([rpcUrl, PUBLIC_BASE_RPC, 'https://1rpc.io/base'])];
-  const wallets: WalletSnap[] = [];
-  for (const w of FLEET) {
+  const wallets: WalletSnap[] = await Promise.all(FLEET.map(async (w) => {
     let eth = 0;
     let usdc = 0;
     try {
@@ -284,15 +377,15 @@ export async function refreshSnapshot(
       const rawUsdc = await rpcFirst(rpcUrls, 'eth_call', [{ to: USDC_BASE, data }, 'latest']);
       usdc = Number(BigInt(rawUsdc)) / 1e6;
     } catch { /* leave 0 */ }
-    wallets.push({
+    return {
       id: w.id,
       role: w.role,
       address: w.address,
       eth,
       usdc,
       usd: eth * ethUsd + usdc,
-    });
-  }
+    };
+  }));
 
   const rpcLive = wallets.some((w) => w.eth > 0 || w.usdc > 0);
   if (!rpcLive) {
@@ -310,10 +403,10 @@ export async function refreshSnapshot(
       };
     }
     const stale: Record<string, { eth: number; usdc: number }> = {
-      treasury: { eth: 14.666775, usdc: 709.662404 },
-      settlement: { eth: 0, usdc: 54526.833194 },
-      hot: { eth: 0.000001068, usdc: 0.037103 },
-      payto: { eth: 0, usdc: 0 },
+      treasury: { eth: 14.667072, usdc: 709.662404 },
+      settlement: { eth: 0, usdc: 53743.737899 },
+      hot: { eth: 0.000001068, usdc: 2.037103 },
+      payto: { eth: 0.000001068, usdc: 2.037103 },
       main: { eth: 0, usdc: 0 },
     };
     for (const w of wallets) {
@@ -339,19 +432,41 @@ export async function refreshSnapshot(
     roi: computeRoi(working),
     vendors: VENDORS,
     ledger,
+    freshness: 'live',
+    marks,
     assumptions: [
-      ...(rpcLive ? [] : ['RPC degraded: Operator-verified 2026-08-15 snapshot used for balances (Alchemy 429 / public Base RPC blocked from Worker).']),
-      'ETH mark: CoinPaprika spot (fallback 1877.49 if fetch fails).',
-      'USDC = $1. wQFLOP / LP tokens are unpriced and excluded.',
+      ...(rpcLive ? [] : ['RPC degraded: last operator-verified snapshot used for balances.']),
+      `ETH mark: ${marks.eth_source} spot (fallback ${FALLBACK_ETH_USD} if fetch fails).`,
+      `USDC = $1. ${marks.wqflop.note}`,
       'Window PnL is settlement-wallet USDC only (Dune 2026-08-09..15).',
       'Opening 61,745 is prose; residual +2,436.73 implies a higher true open.',
       'Flywheel rates are models, not observed returns.',
-      'Alchemy invoice amount unknown — status unsettled_capacity, not a dollar payable we can settle on-chain.',
-      'x402 payTo (0x7cb8…) is a different address than settlement working capital (0x9378…).',
+      'Alchemy invoice amount unknown — dollar bill is dashboard-only; Worker RPC is live.',
+      'x402 payTo is HOT 0x60C4499870f115664d7FfD8411b023DBEf3377d9. Settlement working capital remains 0x9378… (Coinbase Smart Wallet, not agent-signable).',
     ],
   };
   if (kv) await kv.put(SNAPSHOT_KEY, JSON.stringify(snap));
   return snap;
+}
+
+export async function resolveCashflowSnapshot(
+  kv: KvLike | undefined,
+  rpcUrl: string,
+  waitUntil?: (promise: Promise<unknown>) => void,
+): Promise<{ snap: CashflowSnapshot; cache: 'hit' | 'miss' }> {
+  const cached = await loadSnapshot(kv);
+  if (cached && cached.priced_usd > 0) {
+    if (waitUntil) {
+      waitUntil(
+        refreshSnapshot(kv, rpcUrl).catch((e) => {
+          console.error('[cashflow] background refresh failed:', e);
+        }),
+      );
+    }
+    return { snap: { ...cached, freshness: 'cached' }, cache: 'hit' };
+  }
+  const snap = await refreshSnapshot(kv, rpcUrl);
+  return { snap, cache: 'miss' };
 }
 
 export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): string {
@@ -421,12 +536,13 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
     .pill.ok { background: #123524; color: var(--good); }
     a { color: #8cb4ff; }
     section { margin: 1.6rem 0; }
+    .defer { content-visibility: auto; contain-intrinsic-size: auto 24rem; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Internal cashflow &amp; ROI</h1>
-    <p class="sub">Generated ${escapeHtml(snap.generated_at)} · ETH ${usd(snap.eth_usd)} · host ${escapeHtml(hostname)}</p>
+    <h1 id="lcp">Internal cashflow &amp; ROI</h1>
+    <p class="sub">Generated ${escapeHtml(snap.generated_at)} · ${escapeHtml(snap.freshness ?? 'live')} · ETH ${usd(snap.eth_usd)} (${escapeHtml(snap.marks?.eth_source ?? 'unknown')}) · host ${escapeHtml(hostname)}</p>
   </header>
   <main>
     <div class="kpis">
@@ -441,7 +557,12 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
       <div class="grid">${rows}</div>
     </section>
 
-    <section>
+    <section class="defer">
+      <h2>Market sensors</h2>
+      <p class="sub">wQFLOP ${escapeHtml(snap.marks?.wqflop.priced ? 'priced' : 'unpriced')} · pools ${snap.marks?.wqflop.pools ?? 0} · ${escapeHtml(snap.marks?.wqflop.note ?? 'no mark')}</p>
+    </section>
+
+    <section class="defer">
       <h2>Vendor settlement</h2>
       <table>
         <thead><tr><th>Vendor</th><th>Status</th><th>Amount</th><th>Notes</th></tr></thead>
@@ -449,7 +570,7 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
       </table>
     </section>
 
-    <section>
+    <section class="defer">
       <h2>Observed window (settlement USDC)</h2>
       <p class="sub">${escapeHtml(snap.window.start)} → ${escapeHtml(snap.window.end)} · ${snap.window.transfer_count} transfers · ${escapeHtml(snap.window.source)}</p>
       <table>
@@ -462,13 +583,13 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
       </table>
     </section>
 
-    <section>
+    <section class="defer">
       <h2>Flywheel model (not observed)</h2>
       <p class="sub">If working capital compounded weekly for 12 weeks. Hypothesis only — Abraham test, do not treat as forecast.</p>
       <table><thead><tr><th>Scenario</th><th>Future USDC</th></tr></thead><tbody>${fly}</tbody></table>
     </section>
 
-    <section>
+    <section class="defer">
       <h2>Auto-webhook ledger</h2>
       <p class="sub">POST <code>/webhooks/treasury</code> (Alchemy ADDRESS_ACTIVITY or <code>{direction,asset,amount}</code>). Optional header <code>X-Treasury-Hook</code>.</p>
       <table>
@@ -477,7 +598,7 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
       </table>
     </section>
 
-    <section>
+    <section class="defer">
       <h2>Assumptions</h2>
       <ul>${snap.assumptions.map((a) => `<li>${escapeHtml(a)}</li>`).join('')}</ul>
       <p><a href="/api/cashflow">JSON</a> · <a href="/">x402 tiers</a></p>
@@ -487,6 +608,6 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
 </html>`;
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+function escapeHtml(s: string | number | null | undefined): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 }

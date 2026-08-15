@@ -205,6 +205,13 @@ describe('x402 Worker discovery routes', () => {
       api: { type: 'openapi', url: `${HOST}/openapi.json` },
     });
 
+    const mcp = await responseJson<{ tools: { name: string }[] }>(
+      (await dispatch('/.well-known/mcp.json')).response,
+    );
+    expect(mcp.tools.map((t) => t.name)).toEqual(
+      expect.arrayContaining(['execute_paid_call', 'read_cashflow', 'post_treasury_webhook']),
+    );
+
     await expect((await dispatch('/.well-known/security.txt')).response.text()).resolves.toContain(
       'Contact: security@genesisconductor.io',
     );
@@ -541,6 +548,7 @@ describe('x402 Worker cashflow surface', () => {
     const page = await dispatch('/cashflow', {}, { API_KEYS: kv, BASE_RPC_URL: 'https://mainnet.base.org' });
     expect(page.response.status).toBe(200);
     expect(page.response.headers.get('Content-Type')).toContain('text/html');
+    expect(page.response.headers.get('X-Cashflow-Cache')).toBe('miss');
     await expect(page.response.text()).resolves.toContain('Internal cashflow');
 
     const json = await dispatch('/api/cashflow', {}, { API_KEYS: kv, BASE_RPC_URL: 'https://mainnet.base.org' });
@@ -548,6 +556,46 @@ describe('x402 Worker cashflow surface', () => {
     const body = await responseJson<{ priced_usd: number; roi: { period_net_usdc: number } }>(json.response);
     expect(body.roi.period_net_usdc).toBe(-9752.961319);
     expect(body.priced_usd).toBeGreaterThan(0);
+  });
+
+  it('serves a priced KV snapshot immediately and refreshes via waitUntil', async () => {
+    stubFetch((input) => {
+      const url = String(input);
+      if (url.includes('coinpaprika') || url.includes('dexpaprika')) {
+        return Response.json({ quotes: { USD: { price: 2000 } }, summary: { price_usd: 2000 }, results: [] });
+      }
+      return Response.json({ result: '0x0' });
+    });
+    const kv = memoryKv();
+    await kv.put('cashflow:snapshot', JSON.stringify({
+      generated_at: '2026-08-15T12:00:00.000Z',
+      eth_usd: 1800,
+      wallets: [],
+      priced_usd: 81993.9,
+      working_capital_usdc: 53743.74,
+      window: {
+        start: '2026-08-09T00:00:00Z',
+        end: '2026-08-15T10:21:00Z',
+        opening_prose_usdc: 61745,
+        sum_in_usdc: 100159.196218,
+        sum_out_usdc: 109912.157537,
+        net_usdc: -9752.961319,
+        live_close_usdc: 54428.773194,
+        implied_close_usdc: 51992.038681,
+        residual_usdc: 2436.734513,
+        transfer_count: 3258,
+        source: 'dune:erc20_base.evt_Transfer',
+      },
+      roi: { period_net_usdc: -9752.961319, period_roi_on_prose_open: -0.158, implied_true_open_usdc: 64181.73, period_roi_on_implied_open: -0.15, working_capital_usdc: 53743.74, flywheel: [] },
+      vendors: [],
+      ledger: [],
+      assumptions: ['seed'],
+    }));
+    const page = await dispatch('/cashflow', {}, { API_KEYS: kv, BASE_RPC_URL: 'https://mainnet.base.org' });
+    expect(page.response.status).toBe(200);
+    expect(page.response.headers.get('X-Cashflow-Cache')).toBe('hit');
+    expect(page.ctx.waitUntil).toHaveBeenCalled();
+    await expect(page.response.text()).resolves.toContain('2026-08-15T12:00:00.000Z');
   });
 
   it('ingests a treasury webhook into the ledger', async () => {

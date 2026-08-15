@@ -1,10 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   FLEET,
   SETTLEMENT_WINDOW,
+  SNAPSHOT_KEY,
+  VENDORS,
   appendLedger,
+  buildCashflowHtml,
   computeRoi,
+  parseDexPoolCount,
+  parseDexTokenPrice,
   parseWebhook,
+  resolveCashflowSnapshot,
+  type CashflowSnapshot,
 } from './cashflow';
 
 describe('computeRoi', () => {
@@ -92,5 +99,115 @@ describe('appendLedger', () => {
     const next = await appendLedger(kv, many);
     expect(next).toHaveLength(200);
     expect(next[0].amount).toBe(0);
+  });
+});
+
+describe('DexPaprika parsers', () => {
+  it('reads price_usd from summary and ignores missing marks', () => {
+    expect(parseDexTokenPrice({ summary: { price_usd: 1877.4 } })).toBeCloseTo(1877.4);
+    expect(parseDexTokenPrice({ symbol: 'wQFLOP', summary: { price_usd: null } })).toBeNull();
+    expect(parseDexTokenPrice(null)).toBeNull();
+    expect(parseDexTokenPrice({ price_usd: 12 })).toBeCloseTo(12);
+  });
+
+  it('counts DexPaprika search results as pools', () => {
+    expect(parseDexPoolCount({ results: [{ id: 'a' }, { id: 'b' }] })).toBe(2);
+    expect(parseDexPoolCount({ results: [] })).toBe(0);
+    expect(parseDexPoolCount({ pools: [{ id: 'legacy' }] })).toBe(1);
+    expect(parseDexPoolCount(null)).toBe(0);
+  });
+});
+
+describe('resolveCashflowSnapshot', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function memoryKv(seed?: Record<string, string>) {
+    const store = new Map<string, string>(Object.entries(seed ?? {}));
+    return {
+      get: async (k: string) => store.get(k) ?? null,
+      put: async (k: string, v: string) => { store.set(k, v); },
+    };
+  }
+
+  function seededSnap(): CashflowSnapshot {
+    return {
+      generated_at: '2026-08-15T12:00:00.000Z',
+      eth_usd: 1800,
+      wallets: [],
+      priced_usd: 81993.9,
+      working_capital_usdc: 53743.74,
+      window: SETTLEMENT_WINDOW,
+      roi: computeRoi(53743.74),
+      vendors: [...VENDORS],
+      ledger: [],
+      assumptions: ['seed'],
+      freshness: 'live',
+      marks: {
+        eth_source: 'coinpaprika',
+        wqflop: { priced: false, price_usd: null, liquidity_usd: null, pools: 0, note: 'seed' },
+      },
+    };
+  }
+
+  it('returns the KV snapshot immediately and refreshes in the background', async () => {
+    const kv = memoryKv({ [SNAPSHOT_KEY]: JSON.stringify(seededSnap()) });
+    const waitUntil = vi.fn();
+    const { snap, cache } = await resolveCashflowSnapshot(kv, 'https://mainnet.base.org', waitUntil);
+    expect(cache).toBe('hit');
+    expect(snap.freshness).toBe('cached');
+    expect(snap.generated_at).toBe('2026-08-15T12:00:00.000Z');
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+  });
+
+  it('misses cache when no priced snapshot exists', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('dexpaprika.com') && url.includes('tokens/0x4200')) {
+        return Response.json({ summary: { price_usd: 1900 } });
+      }
+      if (url.includes('dexpaprika.com')) {
+        return Response.json({ summary: { price_usd: null }, results: [] });
+      }
+      if (url.includes('coinpaprika')) {
+        return Response.json({ quotes: { USD: { price: 1910 } } });
+      }
+      return Response.json({ result: '0x0' });
+    }));
+    const { snap, cache } = await resolveCashflowSnapshot(memoryKv(), 'https://mainnet.base.org');
+    expect(cache).toBe('miss');
+    expect(snap.freshness).toBe('live');
+    expect(snap.eth_usd).toBe(1900);
+    expect(snap.marks.eth_source).toBe('dexpaprika');
+    expect(snap.marks.wqflop.priced).toBe(false);
+    expect(snap.marks.wqflop.pools).toBe(0);
+  });
+});
+
+describe('buildCashflowHtml LCP', () => {
+  it('marks the h1 as the LCP element and defers below-fold sections', () => {
+    const html = buildCashflowHtml({
+      generated_at: '2026-08-15T12:00:00.000Z',
+      eth_usd: 1800,
+      wallets: [],
+      priced_usd: 1,
+      working_capital_usdc: 1,
+      window: SETTLEMENT_WINDOW,
+      roi: computeRoi(1),
+      vendors: [...VENDORS],
+      ledger: [],
+      assumptions: ['x402 payTo is HOT 0x60C4'],
+      freshness: 'cached',
+      marks: {
+        eth_source: 'dexpaprika',
+        wqflop: { priced: false, price_usd: null, liquidity_usd: null, pools: 0, note: 'unpriced' },
+      },
+    }, 'cashflow.genesisconductor.io');
+    expect(html).toContain('id="lcp"');
+    expect(html).toContain('content-visibility: auto');
+    expect(html).toContain('cached');
+    expect(html).toContain('wQFLOP');
+    expect(html).not.toContain('0x7cb8');
   });
 });

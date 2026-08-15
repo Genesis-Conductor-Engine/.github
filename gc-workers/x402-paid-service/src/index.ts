@@ -10,6 +10,7 @@ import {
   loadSnapshot,
   parseWebhook,
   refreshSnapshot,
+  resolveCashflowSnapshot,
 } from './lib/cashflow';
 import type { SecretBindings } from './lib/secrets';
 import type {
@@ -879,6 +880,8 @@ function buildLlmsTxt(hostname: string) {
 ${tierDocs}
 ## Discovery
 - x402 spec: https://${hostname}/.well-known/x402
+- MCP: https://${hostname}/.well-known/mcp.json
+- Cashflow JSON: https://${hostname}/api/cashflow
 - OpenAPI: https://${hostname}/openapi.json
 - Facilitator health: https://${hostname}/health/facilitator
 `;
@@ -1035,15 +1038,22 @@ export default {
 
     if (pathname === '/cashflow' && request.method === 'GET') {
       try {
-        const kv = cashflowKv(env);
-        const snap = await refreshSnapshot(kv, cashflowRpc(env));
+        const { snap, cache } = await resolveCashflowSnapshot(
+          cashflowKv(env),
+          cashflowRpc(env),
+          (p) => ctx.waitUntil(p),
+        );
         return new Response(buildCashflowHtml(snap, hostname), {
-          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'public, max-age=15, stale-while-revalidate=120',
+            'X-Cashflow-Cache': cache,
+          },
         });
       } catch (e) {
         const cached = await loadSnapshot(cashflowKv(env));
         if (cached) {
-          return new Response(buildCashflowHtml(cached, hostname), {
+          return new Response(buildCashflowHtml({ ...cached, freshness: 'cached' }, hostname), {
             headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
           });
         }
@@ -1053,11 +1063,20 @@ export default {
 
     if (pathname === '/api/cashflow' && request.method === 'GET') {
       try {
-        const snap = await refreshSnapshot(cashflowKv(env), cashflowRpc(env));
-        return Response.json(snap, { headers: { 'Cache-Control': 'no-store' } });
+        const { snap, cache } = await resolveCashflowSnapshot(
+          cashflowKv(env),
+          cashflowRpc(env),
+          (p) => ctx.waitUntil(p),
+        );
+        return Response.json(snap, {
+          headers: {
+            'Cache-Control': 'public, max-age=15, stale-while-revalidate=120',
+            'X-Cashflow-Cache': cache,
+          },
+        });
       } catch (e) {
         const cached = await loadSnapshot(cashflowKv(env));
-        if (cached) return Response.json(cached);
+        if (cached) return Response.json({ ...cached, freshness: 'cached' });
         return Response.json({ error: 'cashflow refresh failed', detail: String(e) }, { status: 502 });
       }
     }
@@ -1203,6 +1222,20 @@ export default {
       }, { headers: { 'Cache-Control': 'public, max-age=3600' } });
     }
 
+    if (pathname === '/.well-known/mcp.json') {
+      return Response.json({
+        schema_version: '2024-11-05',
+        name: 'x402-paid-service',
+        version: '1.1.0',
+        description: 'USDC micropayment service plus internal cashflow snapshot on Base',
+        tools: [
+          { name: 'execute_paid_call', description: 'Execute a paid API call with USDC micropayment' },
+          { name: 'read_cashflow', description: `GET https://${hostname}/api/cashflow` },
+          { name: 'post_treasury_webhook', description: `POST https://${hostname}/webhooks/treasury` },
+        ],
+      }, { headers: { 'Cache-Control': 'public, max-age=3600' } });
+    }
+
     if (pathname === '/.well-known/security.txt') {
       return new Response(`Contact: security@genesisconductor.io\nExpires: 2027-06-01T00:00:00.000Z\nPreferred-Languages: en\n`, {
         headers: { 'Content-Type': 'text/plain' },
@@ -1217,7 +1250,7 @@ export default {
 
     if (pathname === '/sitemap.xml') {
       const base = `https://${hostname}`;
-      const urls = ['/', '/health', '/cashflow', '/api/cashflow', '/.well-known/x402', '/openapi.json', '/llms.txt']
+      const urls = ['/', '/health', '/cashflow', '/api/cashflow', '/.well-known/x402', '/.well-known/mcp.json', '/openapi.json', '/llms.txt']
         .map((p) => `  <url><loc>${base}${p}</loc></url>`)
         .join('\n');
       return new Response(

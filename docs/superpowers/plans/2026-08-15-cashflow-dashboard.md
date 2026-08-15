@@ -47,6 +47,14 @@ Optional Worker secret: `TREASURY_WEBHOOK_SECRET` → send as `X-Treasury-Hook`.
 
 ## Structural cashflow leak
 
-`VAULT_ADDRESS` / x402 `payTo` is `0x7cb8…`. Working capital sits in settlement `0x9378…`. Incoming paid API revenue does not automatically recapitalize the 54k USDC book.
+`VAULT_ADDRESS` / x402 `payTo` is HOT `0x60C4…77d9` (signable). Working capital still sits in settlement `0x9378…` (Coinbase Smart Wallet, not agent-signable). Incoming paid API revenue now lands on HOT; the ~$53.7k USDC book does not move until a human sends it.
+
+## 2026-08-15 LCP / sensors increment
+
+- `GET /cashflow` and `GET /api/cashflow` serve the last KV snapshot first (`X-Cashflow-Cache: hit`) and refresh in `waitUntil`.
+- ETH mark prefers DexPaprika Base WETH; CoinPaprika is fallback.
+- wQFLOP is listed on DexPaprika with **0 pools / no price** — still unpriced. Do not treat paper TVL as working capital.
+- Alby Hub `:8029` was down this session. Alchemy CLI 0.22 is monthly-capacity 429; Worker live RPC is the cashflow path.
+- NemoClaw is installed on Darwin (`v0.0.17`) — do not onboard (Linux + GPU; diamondnode OFFLOAD).
 
 Do not merge the whole `chore/gitignore-gemini-gha-creds` branch to ship this — cherry-pick the worker commit.
