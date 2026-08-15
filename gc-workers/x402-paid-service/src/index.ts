@@ -347,27 +347,19 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
     },
   });
 
+  // v2 PaymentRequirements are payment fields only. Resource metadata lives on
+  // `resource` + bazaar extensions. Extra keys on accepts (description,
+  // mimeType, outputSchema) make Kiro/awal/CDP rewrite or reject the payload.
   const primaryAccept = {
     scheme: 'exact' as const,
     network: NETWORK,
     asset,
     amount,
     payTo,
-    description,
-    mimeType: 'application/json',
     maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
     extra: {
-      name: 'USD Coin',
-      version: '2',
-    },
-    outputSchema: {
-      input: {
-        type: 'http' as const,
-        method: 'POST' as const,
-        discoverable: true,
-        description,
-        body: { type: 'object' as const, additionalProperties: true },
-      },
+      name: asset === 'native' ? 'Ether' : 'USD Coin',
+      version: asset === 'native' ? '1' : '2',
     },
   };
 
@@ -387,21 +379,10 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
     asset: USDC_POLYGON,
     amount: usdcAmount,
     payTo,
-    description,
-    mimeType: 'application/json',
     maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
     extra: {
       name: 'USD Coin',
       version: '2',
-    },
-    outputSchema: {
-      input: {
-        type: 'http' as const,
-        method: 'POST' as const,
-        discoverable: true,
-        description,
-        body: { type: 'object' as const, additionalProperties: true },
-      },
     },
   });
 
@@ -413,21 +394,10 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
       asset: 'native',
       amount: ethAmount,
       payTo,
-      description,
-      mimeType: 'application/json',
       maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
       extra: {
         name: 'Ether',
         version: '1',
-      },
-      outputSchema: {
-        input: {
-          type: 'http' as const,
-          method: 'POST' as const,
-          discoverable: true,
-          description,
-          body: { type: 'object' as const, additionalProperties: true },
-        },
       },
     });
   }
@@ -475,7 +445,7 @@ export async function describeVerifyFailure(
     } catch { /* keep generic */ }
   }
   if (contractPayer) {
-    return 'payer is a contract (smart wallet). x402 exact EIP-3009 USDC requires an EOA; awal/Coinbase Smart Wallet signatures revert on transferWithAuthorization.';
+    return `Facilitator error: ${facilitatorBody} Payer ${payer} is a contract wallet. x402 exact + CDP accept ERC-1271 / ERC-6492 (Kiro, awal, Coinbase Smart Wallet); signatures may exceed 65 bytes and must be forwarded unmodified.`;
   }
   return `Facilitator error: ${facilitatorBody}`;
 }
@@ -485,10 +455,7 @@ export function slimPaymentRequirements(req: unknown): Record<string, unknown> |
   if (!req || typeof req !== 'object') return req;
   const r = req as Record<string, unknown>;
   const extra = (r.extra && typeof r.extra === 'object')
-    ? {
-        name: (r.extra as Record<string, unknown>).name ?? 'USD Coin',
-        version: String((r.extra as Record<string, unknown>).version ?? '2'),
-      }
+    ? { ...(r.extra as Record<string, unknown>) }
     : { name: 'USD Coin', version: '2' };
   return {
     scheme: r.scheme ?? 'exact',
@@ -501,16 +468,71 @@ export function slimPaymentRequirements(req: unknown): Record<string, unknown> |
   };
 }
 
+function sameAddr(a: unknown, b: unknown): boolean {
+  return typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
+}
+
+/** Match the client's accepted requirement instead of always using accepts[0]. */
+export function matchAdvertisedRequirements(accepts: unknown[], payload: unknown): unknown {
+  const accepted = payload && typeof payload === 'object'
+    ? (payload as Record<string, unknown>).accepted
+    : undefined;
+  if (accepted && typeof accepted === 'object') {
+    const want = slimPaymentRequirements(accepted) as Record<string, unknown>;
+    const hit = accepts.find((item) => {
+      const have = slimPaymentRequirements(item) as Record<string, unknown>;
+      return have.scheme === want.scheme
+        && have.network === want.network
+        && String(have.amount) === String(want.amount)
+        && sameAddr(have.asset, want.asset)
+        && sameAddr(have.payTo, want.payTo);
+    });
+    if (hit) return hit;
+  }
+  return accepts[0];
+}
+
+const ERC6492_MAGIC = '6492649264926492649264926492649264926492649264926492649264926492';
+
+/**
+ * awal / viem `encodeAbiParameters([{type:"tuple",...}])` prefixes a SignatureWrapper
+ * with a 32-byte offset (0x20). Coinbase Smart Wallet decodes `(uint256 ownerIndex, bytes)`
+ * with no outer offset; ownerIndex=32 reverts isValidSignature. Strip only that pattern.
+ * Leave 65-byte EOA and ERC-6492 (magic suffix) untouched.
+ */
+export function unwrapSmartWalletSignature(signature: string): string {
+  if (typeof signature !== 'string' || !signature.startsWith('0x')) return signature;
+  const hex = signature.slice(2);
+  if (hex.length % 2 !== 0) return signature;
+  if (hex.toLowerCase().endsWith(ERC6492_MAGIC)) return signature;
+  const bytes = hex.length / 2;
+  if (bytes !== 224) return signature;
+  const word0 = BigInt('0x' + hex.slice(0, 64));
+  const word1 = BigInt('0x' + hex.slice(64, 128));
+  const word2 = BigInt('0x' + hex.slice(128, 192));
+  if (word0 !== 32n || word1 !== 0n || word2 !== 64n) return signature;
+  return `0x${hex.slice(64)}`;
+}
+
+function withUnwrappedSignature(decoded: Record<string, unknown>): Record<string, unknown> {
+  const payload = decoded.payload;
+  if (!payload || typeof payload !== 'object') return decoded;
+  const rec = payload as Record<string, unknown>;
+  if (typeof rec.signature !== 'string') return decoded;
+  const unwrapped = unwrapSmartWalletSignature(rec.signature);
+  if (unwrapped === rec.signature) return decoded;
+  return { ...decoded, payload: { ...rec, signature: unwrapped } };
+}
+
 /** awal / x402 v2 clients often send {x402Version, payload} without `accepted`. */
 export function normalizePaymentPayload(decoded: unknown, accepted: unknown): unknown {
   if (!decoded || typeof decoded !== 'object') return decoded;
-  const rec = decoded as Record<string, unknown>;
-  const slim = slimPaymentRequirements(accepted);
-  if (rec.payload && rec.accepted == null) {
-    return { ...rec, accepted: slim };
-  }
+  const rec = withUnwrappedSignature(decoded as Record<string, unknown>);
   if (rec.accepted && typeof rec.accepted === 'object') {
     return { ...rec, accepted: slimPaymentRequirements(rec.accepted) };
+  }
+  if (rec.payload && rec.accepted == null) {
+    return { ...rec, accepted: slimPaymentRequirements(accepted) };
   }
   return rec;
 }
@@ -721,12 +743,16 @@ async function handleTier(
     return Response.json({ error: 'Invalid payment signature' }, { status: 400 });
   }
 
+  const matchedRequirements = slimPaymentRequirements(
+    matchAdvertisedRequirements(paymentRequired.accepts, paymentPayload),
+  );
+
   let verifyResult: { isValid: boolean; invalidReason?: string; invalidMessage?: string; payer?: string };
   try {
     const verifyResp = await facilitatorPost('verify', {
       x402Version: X402_VERSION,
       paymentPayload,
-      paymentRequirements: slimPaymentRequirements(paymentRequirements),
+      paymentRequirements: matchedRequirements,
     }, env);
 
     if (!verifyResp.ok) {
@@ -758,7 +784,7 @@ async function handleTier(
     const settleResp = await facilitatorPost('settle', {
       x402Version: X402_VERSION,
       paymentPayload,
-      paymentRequirements: slimPaymentRequirements(paymentRequirements),
+      paymentRequirements: matchedRequirements,
     }, env);
     if (!settleResp.ok) {
       const txt = await settleResp.text();

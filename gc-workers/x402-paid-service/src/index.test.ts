@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext, ScheduledEvent } from './runtime-types';
-import { describeVerifyFailure } from './index';
+import { describeVerifyFailure, unwrapSmartWalletSignature } from './index';
 
 const httpMocks = vi.hoisted(() => ({
   encodePaymentRequiredHeader: vi.fn(() => 'encoded-payment-required'),
@@ -312,12 +312,15 @@ describe('x402 Worker paid tier routes', () => {
     expect(body.resource.url).toBe(`${HOST}/api/execute`);
     // Assert the invariant, not the marketing copy. The Bazaar renders these
     // descriptions; a listing without one is indistinguishable from a dead
-    // endpoint to any agent browsing for a capability, so every payment path
-    // must carry a substantive description and they must agree.
+    // endpoint to any agent browsing for a capability.
     expect(body.resource.description).toBeTruthy();
     expect(body.resource.description.length).toBeGreaterThan(40);
-    for (const accept of body.accepts as Array<{ description?: string }>) {
-      expect(accept.description).toBe(body.resource.description);
+    // v2 PaymentRequirements carry only payment fields. description / mimeType /
+    // outputSchema on accepts make Kiro/awal/CDP reject or rewrite the payload.
+    for (const accept of body.accepts as Array<Record<string, unknown>>) {
+      expect(accept).not.toHaveProperty('description');
+      expect(accept).not.toHaveProperty('mimeType');
+      expect(accept).not.toHaveProperty('outputSchema');
     }
     expect(body.extensions.kind).toBe('discovery');
     expect(httpMocks.encodePaymentRequiredHeader).toHaveBeenCalledWith(expect.objectContaining({ x402Version: 2 }));
@@ -527,6 +530,68 @@ describe('x402 Worker paid tier routes', () => {
     expect(response.status).toBe(200);
   });
 
+  it('forwards the client accepted network and a 6492-length signature to the facilitator', async () => {
+    const sigAwal224 =
+      '0x' +
+      '00'.repeat(31) + '20' +
+      '00'.repeat(32) +
+      '00'.repeat(31) + '40' +
+      '00'.repeat(31) + '41' +
+      'ab'.repeat(32) +
+      'cd'.repeat(32) +
+      '1b' + '00'.repeat(31);
+    httpMocks.decodePaymentSignatureHeader.mockReturnValueOnce({
+      x402Version: 2,
+      accepted: {
+        scheme: 'exact',
+        network: 'eip155:137',
+        amount: '10000',
+        asset: USDC_POLYGON,
+        payTo: VAULT,
+        maxTimeoutSeconds: 60,
+        extra: { name: 'USD Coin', version: '2', permit2: { unused: true } },
+      },
+      payload: {
+        signature: sigAwal224,
+        authorization: {
+          from: '0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8',
+          to: VAULT,
+          value: '10000',
+        },
+      },
+    });
+    stubFetch((input, init) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        paymentPayload?: {
+          accepted?: { network?: string; extra?: Record<string, unknown> };
+          payload?: { signature?: string };
+        };
+        paymentRequirements?: { network?: string; asset?: string };
+      };
+      if (String(input).endsWith('/verify')) {
+        expect(body.paymentRequirements?.network).toBe('eip155:137');
+        expect(body.paymentRequirements?.asset).toBe(USDC_POLYGON);
+        expect(body.paymentPayload?.accepted?.network).toBe('eip155:137');
+        expect(body.paymentPayload?.accepted?.extra).toMatchObject({
+          name: 'USD Coin',
+          version: '2',
+          permit2: { unused: true },
+        });
+        expect(body.paymentPayload?.payload?.signature).toBe(`0x${sigAwal224.slice(66)}`);
+        expect((body.paymentPayload?.payload?.signature?.length ?? 0) - 2).toBe(384);
+        return Response.json({ isValid: true, payer: '0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8' });
+      }
+      return Response.json({ success: true, transaction: '0x6492ok' });
+    });
+
+    const { response } = await dispatch('/api/execute', {
+      method: 'POST',
+      headers: { 'PAYMENT-SIGNATURE': 'kiro-6492', 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    expect(response.status).toBe(200);
+  });
+
   it('returns Shopify fulfillment details and USDC charges for premium paid tiers', async () => {
     stubFetch((input) => {
       if (String(input).endsWith('/verify')) {
@@ -564,19 +629,50 @@ describe('x402 Worker paid tier routes', () => {
   });
 });
 
+describe('unwrapSmartWalletSignature', () => {
+  const eoa = `0x${'ab'.repeat(32)}${'cd'.repeat(32)}1b`;
+  const magic = '6492649264926492649264926492649264926492649264926492649264926492';
+  // awal/viem encodeAbiParameters(tuple{uint256,bytes}) adds a leading 0x20 offset.
+  const awal224 =
+    '0x' +
+    '00'.repeat(31) + '20' +
+    '00'.repeat(32) +
+    '00'.repeat(31) + '40' +
+    '00'.repeat(31) + '41' +
+    'ab'.repeat(32) +
+    'cd'.repeat(32) +
+    '1b' + '00'.repeat(31);
+
+  it('strips the viem tuple offset so CDP/CSW see ownerIndex 0', () => {
+    const out = unwrapSmartWalletSignature(awal224);
+    expect(out.startsWith('0x')).toBe(true);
+    expect((out.length - 2) / 2).toBe(192);
+    expect(out.slice(2, 66)).toBe('00'.repeat(32));
+  });
+
+  it('leaves 65-byte EOA signatures and ERC-6492 wraps alone', () => {
+    expect(unwrapSmartWalletSignature(eoa)).toBe(eoa);
+    const wrapped = `0x${'11'.repeat(40)}${magic}`;
+    expect(unwrapSmartWalletSignature(wrapped)).toBe(wrapped);
+  });
+});
+
 describe('describeVerifyFailure', () => {
-  it('names smart-wallet payers so the next EOA can complete the cash trigger', async () => {
+  it('keeps the facilitator reason and does not tell Kiro/awal to switch to an EOA', async () => {
     stubFetch(() => Response.json({ result: '0x363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc57' }));
     const msg = await describeVerifyFailure(
-      '{"invalidReason":"invalid_payload"}',
+      '{"invalidReason":"invalid_payload","invalidMessage":"contract call failed: execution reverted"}',
       {
         x402Version: 2,
         payload: { authorization: { from: '0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8' } },
       },
       'https://mainnet.base.org',
     );
-    expect(msg).toContain('smart wallet');
-    expect(msg).toContain('EOA');
+    expect(msg).toContain('invalid_payload');
+    expect(msg).toContain('execution reverted');
+    expect(msg).toMatch(/1271|6492|Kiro|awal/i);
+    expect(msg).not.toMatch(/requires an EOA/i);
+    expect(msg).not.toMatch(/cannot EIP-3009/i);
   });
 });
 
