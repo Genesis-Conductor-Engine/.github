@@ -12,6 +12,7 @@ import {
   refreshSnapshot,
   resolveCashflowSnapshot,
 } from './lib/cashflow';
+import { runRtptpa } from './lib/rtptpa';
 import type { SecretBindings } from './lib/secrets';
 import type {
   ExecutionContext,
@@ -172,7 +173,7 @@ const TIERS: TierConfig[] = [
     getAmount: (e) => e.TIER_DISCOVERY_USD6,
     getEthAmount: (e) => e.TIER_DISCOVERY_ETH_WEI,
     description:
-      'x402 settlement smoke test — cheapest end-to-end paid call on Base. Verify your wallet, facilitator, and EIP-3009 USDC settlement for one cent before spending more. Returns payer address and confirmation. Keywords: x402 test, payment verification, cheapest api, micropayment, agent onboarding, penny call.',
+      'x402 settlement smoke test + RTPTPA-QCG control_spec. One-cent Base USDC call returns attested NV-center arbitration (relative-tensor power-tower). Keywords: x402 test, rtpTPA, quantum control genesis, micropayment, penny call.',
     displayPrice: '$0.01',
     asset: USDC_BASE,
     ethAsset: 'native',
@@ -683,28 +684,6 @@ async function handleTier(
   }
 
   const body = await request.json().catch(() => ({}));
-
-  const result = tier.shopifyUrl
-    ? {
-        success: true,
-        tier: tier.path.replace('/api/', ''),
-        fulfillment_url: tier.shopifyUrl(env),
-        payer: verifyResult.payer,
-        charged_usd6: requestedEth ? '0' : amount,
-        charged_eth_wei: requestedEth ? amount : '0',
-        payment_asset: requestedEth ? 'ETH' : 'USDC',
-      }
-    : {
-        success: true,
-        tier: tier.path.replace('/api/', ''),
-        result: tier.description,
-        input: body,
-        payer: verifyResult.payer,
-        charged_usd6: requestedEth ? '0' : amount,
-        charged_eth_wei: requestedEth ? amount : '0',
-        payment_asset: requestedEth ? 'ETH' : 'USDC',
-      };
-
   const payerAddress = verifyResult.payer ?? 'unknown';
 
   // Settle BEFORE releasing the result. Previously settlement ran fire-and-forget
@@ -755,6 +734,29 @@ async function handleTier(
         asset: requestedEth ? 'ETH' : 'USDC',
       })
     : null;
+
+  const deliverRtptpa = tier.path === '/api/execute' || tier.path === '/api/inference';
+  const rtptpa = deliverRtptpa ? await runRtptpa(body) : undefined;
+
+  const result = tier.shopifyUrl
+    ? {
+        success: true,
+        tier: tier.path.replace('/api/', ''),
+        fulfillment_url: tier.shopifyUrl(env),
+        charged_usd6: requestedEth ? '0' : amount,
+        charged_eth_wei: requestedEth ? amount : '0',
+        payment_asset: requestedEth ? 'ETH' : 'USDC',
+      }
+    : {
+        success: true,
+        tier: tier.path.replace('/api/', ''),
+        result: deliverRtptpa ? rtptpa : tier.description,
+        input: body,
+        charged_usd6: requestedEth ? '0' : amount,
+        charged_eth_wei: requestedEth ? amount : '0',
+        payment_asset: requestedEth ? 'ETH' : 'USDC',
+        ...(rtptpa ? { rtptpa } : {}),
+      };
 
   return Response.json({
     ...result,

@@ -469,15 +469,25 @@ describe('x402 Worker paid tier routes', () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(responseJson<Record<string, unknown>>(response)).resolves.toMatchObject({
+    const paid = await responseJson<{
+      success: boolean;
+      tier: string;
+      rtptpa?: { record_type?: string; data?: { control_spec?: { target_system?: string } } };
+      input: unknown;
+      payer: string;
+      charged_usd6: string;
+      payment_asset: string;
+    }>(response);
+    expect(paid).toMatchObject({
       success: true,
       tier: 'execute',
       input: { job: 'run' },
       payer: '0xPayer',
       charged_usd6: '10000',
-      charged_eth_wei: '0',
       payment_asset: 'USDC',
     });
+    expect(paid.rtptpa?.record_type).toBe('rtpTPA_arbitration');
+    expect(paid.rtptpa?.data?.control_spec?.target_system).toBe('Diamond_NV_center');
     await Promise.all(ctx.pending);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     // Settlement is now awaited and gates the response, not fire-and-forget via
