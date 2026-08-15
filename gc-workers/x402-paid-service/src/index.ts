@@ -909,6 +909,8 @@ function cashflowKv(env: Env): { get(key: string): Promise<string | null>; put(k
 }
 
 function cashflowRpc(env: Env): string {
+  const alchemy = env.ALCHEMY_BASE_RPC_URL?.trim();
+  if (alchemy && isAllowedAlchemyRpcUrl(alchemy)) return alchemy;
   const fallback = env.BASE_RPC_URL?.trim();
   if (fallback) return fallback;
   return PUBLIC_BASE_RPC;

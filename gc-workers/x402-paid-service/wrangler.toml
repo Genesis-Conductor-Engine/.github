@@ -2,9 +2,17 @@ name = "x402-paid-service"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
 
 [triggers]
-crons = ["0 */6 * * *"]   # gas monitor every 6 hours
+crons = ["0 */6 * * *"]   # gas monitor + cashflow snapshot every 6 hours
+
+# workers.dev is 1050-blocked from several operator IPs. Custom domain is the
+# reachable cashflow + webhook front door. Do not reuse x402.genesisconductor.io
+# — that CNAME is a Cloudflare Tunnel.
+[[routes]]
+pattern = "cashflow.genesisconductor.io"
+custom_domain = true
 
 # Use the existing API_KEYS namespace
 [[kv_namespaces]]

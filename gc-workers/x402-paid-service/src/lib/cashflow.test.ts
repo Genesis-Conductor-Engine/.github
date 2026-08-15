@@ -53,6 +53,18 @@ describe('parseWebhook', () => {
     expect(events).toEqual([expect.objectContaining({ direction: 'out', amount: 25, source: 'manual' })]);
   });
 
+  it('records gas_low alerts from the existing cron webhook', () => {
+    const events = parseWebhook({
+      alert: 'gas_low',
+      vault: '0.000000 ETH',
+      main: '0.000001 ETH',
+      threshold: '0.002000 ETH',
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ source: 'gas_monitor', asset: 'ETH', direction: 'out' });
+    expect(events[0].note).toContain('gas_low');
+  });
+
   it('returns empty for unknown payloads', () => {
     expect(parseWebhook(null)).toEqual([]);
     expect(parseWebhook({ hello: true })).toEqual([]);

@@ -151,6 +151,17 @@ export function parseWebhook(body: unknown): LedgerEvent[] {
     return out;
   }
 
+  if (rec.alert === 'gas_low') {
+    return [{
+      ts: new Date().toISOString(),
+      source: 'gas_monitor',
+      direction: 'out',
+      asset: 'ETH',
+      amount: 0,
+      note: `gas_low vault=${String(rec.vault ?? '')} main=${String(rec.main ?? '')} threshold=${String(rec.threshold ?? '')}`,
+    }];
+  }
+
   if (typeof rec.asset === 'string' && (rec.direction === 'in' || rec.direction === 'out')) {
     return [{
       ts: typeof rec.ts === 'string' ? rec.ts : new Date().toISOString(),
@@ -236,6 +247,18 @@ export async function fetchEthUsd(): Promise<number> {
   return price;
 }
 
+async function rpcFirst(urls: string[], method: string, params: unknown[]): Promise<string> {
+  let last: unknown;
+  for (const url of urls) {
+    try {
+      return await rpc(url, method, params);
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
+}
+
 export async function refreshSnapshot(
   kv: KvLike | undefined,
   rpcUrl: string = PUBLIC_BASE_RPC,
@@ -247,17 +270,18 @@ export async function refreshSnapshot(
     // keep last-known mark
   }
 
+  const rpcUrls = [...new Set([rpcUrl, PUBLIC_BASE_RPC, 'https://1rpc.io/base'])];
   const wallets: WalletSnap[] = [];
   for (const w of FLEET) {
     let eth = 0;
     let usdc = 0;
     try {
-      const rawEth = await rpc(rpcUrl, 'eth_getBalance', [w.address, 'latest']);
+      const rawEth = await rpcFirst(rpcUrls, 'eth_getBalance', [w.address, 'latest']);
       eth = Number(BigInt(rawEth)) / 1e18;
     } catch { /* leave 0 */ }
     try {
       const data = `0x70a08231${padAddr(w.address)}`;
-      const rawUsdc = await rpc(rpcUrl, 'eth_call', [{ to: USDC_BASE, data }, 'latest']);
+      const rawUsdc = await rpcFirst(rpcUrls, 'eth_call', [{ to: USDC_BASE, data }, 'latest']);
       usdc = Number(BigInt(rawUsdc)) / 1e6;
     } catch { /* leave 0 */ }
     wallets.push({
@@ -268,6 +292,37 @@ export async function refreshSnapshot(
       usdc,
       usd: eth * ethUsd + usdc,
     });
+  }
+
+  const rpcLive = wallets.some((w) => w.eth > 0 || w.usdc > 0);
+  if (!rpcLive) {
+    const prior = await loadSnapshot(kv);
+    if (prior && prior.priced_usd > 0) {
+      return {
+        ...prior,
+        generated_at: new Date().toISOString(),
+        eth_usd: ethUsd,
+        ledger: await loadLedger(kv),
+        assumptions: [
+          ...prior.assumptions.filter((a) => !a.startsWith('RPC degraded')),
+          'RPC degraded: showing last priced snapshot (Alchemy 429 / public RPC blocked from Worker).',
+        ],
+      };
+    }
+    const stale: Record<string, { eth: number; usdc: number }> = {
+      treasury: { eth: 14.666775, usdc: 709.662404 },
+      settlement: { eth: 0, usdc: 54526.833194 },
+      hot: { eth: 0.000001068, usdc: 0.037103 },
+      payto: { eth: 0, usdc: 0 },
+      main: { eth: 0, usdc: 0 },
+    };
+    for (const w of wallets) {
+      const s = stale[w.id];
+      if (!s) continue;
+      w.eth = s.eth;
+      w.usdc = s.usdc;
+      w.usd = s.eth * ethUsd + s.usdc;
+    }
   }
 
   const priced = wallets.reduce((s, w) => s + w.usd, 0);
@@ -285,6 +340,7 @@ export async function refreshSnapshot(
     vendors: VENDORS,
     ledger,
     assumptions: [
+      ...(rpcLive ? [] : ['RPC degraded: Operator-verified 2026-08-15 snapshot used for balances (Alchemy 429 / public Base RPC blocked from Worker).']),
       'ETH mark: CoinPaprika spot (fallback 1877.49 if fetch fails).',
       'USDC = $1. wQFLOP / LP tokens are unpriced and excluded.',
       'Window PnL is settlement-wallet USDC only (Dune 2026-08-09..15).',

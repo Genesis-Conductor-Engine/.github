@@ -1,8 +1,19 @@
 # Internal cashflow dashboard
 
-Live snapshot (permanent here.now): https://still-eagle-k5mn.here.now/
+Live Worker (Access bypass attached 2026-08-15):
 
-Worker routes (after `wrangler login` + deploy):
+- https://cashflow.genesisconductor.io/cashflow
+- https://cashflow.genesisconductor.io/api/cashflow
+- https://cashflow.genesisconductor.io/webhooks/treasury
+- https://x402-paid-service.iholt.workers.dev/cashflow
+
+Static snapshot (here.now): https://still-eagle-k5mn.here.now/
+
+Access app `x402-cashflow` (`bea0e6d3-7776-42fb-af50-e7fdf9208874`) — bypass everyone. Default-deny 1050 without this app.
+
+GAS_ALERT_WEBHOOK → `https://cashflow.genesisconductor.io/webhooks/treasury`
+
+Worker routes:
 
 - `GET /cashflow` — HTML dashboard
 - `GET /api/cashflow` — JSON snapshot
