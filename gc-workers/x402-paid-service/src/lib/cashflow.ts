@@ -15,7 +15,7 @@ export const FLEET = [
   { id: 'treasury', role: 'Root treasury (locked)', address: '0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75' },
   { id: 'settlement', role: 'Settlement / working capital', address: '0x937897fe19F675c96a71078820F21cA9bD637180' },
   { id: 'hot', role: 'HOT_X402 / LP owner', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' },
-  { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo)', address: '0x7cb8D8C5Acfa704Fc5e37880CAA05dff71a57261' },
+  { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo = HOT)', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' },
   { id: 'main', role: 'x402 MAIN_WALLET (signer)', address: '0x967a9C352a87D3a72baa7aD10632A7276101dBc9' },
 ] as const;
 

@@ -547,7 +547,7 @@ describe('x402 Worker cashflow surface', () => {
     expect(json.response.status).toBe(200);
     const body = await responseJson<{ priced_usd: number; roi: { period_net_usdc: number } }>(json.response);
     expect(body.roi.period_net_usdc).toBe(-9752.961319);
-    expect(body.priced_usd).toBe(0);
+    expect(body.priced_usd).toBeGreaterThan(0);
   });
 
   it('ingests a treasury webhook into the ledger', async () => {

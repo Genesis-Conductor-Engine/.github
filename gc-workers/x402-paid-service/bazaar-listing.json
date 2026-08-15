@@ -29,7 +29,7 @@
   },
   "assetSymbol": "USDC",
   "assetDecimals": 6,
-  "payTo": "0x7cb8D8C5Acfa704Fc5e37880CAA05dff71a57261",
+  "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
   "facilitator": "https://api.cdp.coinbase.com/platform/v2/x402",
   "facilitatorMode": "cdp",
   "settlement": "EIP-3009 transferWithAuthorization (USDC), settled via Coinbase CDP facilitator on Base mainnet",
@@ -54,7 +54,7 @@
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
       },
-      "payTo": "0x7cb8D8C5Acfa704Fc5e37880CAA05dff71a57261",
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
       "description": "Discovery tier — generic paid API call. Lowest-cost entry point for agents to test x402 settlement end-to-end.",
       "keywords": [
         "cheap api",
@@ -100,7 +100,7 @@
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
       },
-      "payTo": "0x7cb8D8C5Acfa704Fc5e37880CAA05dff71a57261",
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
       "description": "Pro tier — premium paid API access for higher-value agent requests.",
       "keywords": [
         "premium api",
@@ -144,7 +144,7 @@
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
       },
-      "payTo": "0x7cb8D8C5Acfa704Fc5e37880CAA05dff71a57261",
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
       "description": "Inference tier — pay-per-call AI inference workloads.",
       "keywords": [
         "ai inference",
@@ -190,7 +190,7 @@
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
       },
-      "payTo": "0x7cb8D8C5Acfa704Fc5e37880CAA05dff71a57261",
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
       "description": "Specialized data tier — high-value specialized data or compute.",
       "keywords": [
         "specialized data",
@@ -234,7 +234,7 @@
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
       },
-      "payTo": "0x7cb8D8C5Acfa704Fc5e37880CAA05dff71a57261",
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
       "description": "Genesis Conductor Founders License — agent-to-agent checkout. Successful payment returns a Shopify fulfillment URL for the gc-founders-license SKU.",
       "keywords": [
         "founders license",
@@ -270,7 +270,7 @@
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
       },
-      "payTo": "0x7cb8D8C5Acfa704Fc5e37880CAA05dff71a57261",
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
       "description": "Genesis Conductor Source Exclusive — agent-to-agent checkout for one source-exclusive plugin. Successful payment returns a Shopify fulfillment URL.",
       "keywords": [
         "source exclusive",
