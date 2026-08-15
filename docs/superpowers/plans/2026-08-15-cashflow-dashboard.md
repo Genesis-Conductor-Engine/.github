@@ -31,7 +31,9 @@ Flywheel rows on the dashboard are **models**, not observed returns.
 
 ## Vendor settlement
 
-Alchemy is `unsettled_capacity` (monthly CU 429). There is no on-chain Alchemy payTo. Pay the invoice at https://dashboard.alchemy.com/settings/billing. Worker gas checks already fall back to `BASE_RPC_URL`.
+Alchemy RPC is **live** again (new `alch_` key stored only as Worker secrets `ALCHEMY_API_KEY` + `ALCHEMY_BASE_RPC_URL` — not in git). Dollar invoice, if any, is still only payable in the Alchemy billing UI.
+
+Notify/Address Activity still needs the **dashboard Notify auth token** (different from the RPC key). Create the hook in Alchemy → Address Activity → Base → fleet addresses → `https://cashflow.genesisconductor.io/webhooks/treasury`.
 
 ## Auto-webhook
 

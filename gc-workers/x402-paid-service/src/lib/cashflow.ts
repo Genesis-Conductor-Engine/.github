@@ -38,9 +38,9 @@ export const VENDORS = [
   {
     id: 'alchemy',
     name: 'Alchemy',
-    status: 'unsettled_capacity',
+    status: 'live_rpc',
     category: 'opex_rpc',
-    note: 'Monthly compute-unit cap exceeded 2026-08-15 (HTTP 429). Gas monitor already falls back to BASE_RPC_URL. Invoice must be paid in the Alchemy billing UI — no on-chain payTo is published.',
+    note: 'New API key installed 2026-08-15 (Worker secrets ALCHEMY_API_KEY + ALCHEMY_BASE_RPC_URL). Live Base RPC recovered. Dollar invoice still only payable in the Alchemy billing UI — no on-chain payTo.',
     settle_url: 'https://dashboard.alchemy.com/settings/billing',
     amount_usd: null,
   },
@@ -371,7 +371,7 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
   const vendorRows = snap.vendors.map((v) => `
     <tr>
       <td>${escapeHtml(v.name)}</td>
-      <td><span class="pill warn">${escapeHtml(v.status)}</span></td>
+      <td><span class="pill ${v.status === 'live_rpc' ? 'ok' : 'warn'}">${escapeHtml(v.status)}</span></td>
       <td>${v.amount_usd == null ? 'unknown' : usd(v.amount_usd)}</td>
       <td>${escapeHtml(v.note)} <a href="${escapeHtml(v.settle_url)}">settle</a></td>
     </tr>`).join('');
@@ -416,7 +416,9 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
     table { width:100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
     th, td { text-align:left; padding:.55rem .7rem; border-bottom: 1px solid var(--line); font-size:.9rem; }
     th { color: var(--muted); font-weight: 600; }
-    .pill { padding:.1rem .45rem; border-radius: 999px; background: #3a2e10; color: var(--warn); font-size:.8rem; }
+    .pill { padding:.1rem .45rem; border-radius: 999px; font-size:.8rem; }
+    .pill.warn { background: #3a2e10; color: var(--warn); }
+    .pill.ok { background: #123524; color: var(--good); }
     a { color: #8cb4ff; }
     section { margin: 1.6rem 0; }
   </style>
