@@ -511,6 +511,8 @@ describe('x402 Worker paid tier routes', () => {
       };
       if (String(input).endsWith('/verify')) {
         expect(body.paymentPayload?.accepted).toMatchObject({ amount: '10000', payTo: VAULT });
+        expect(body.paymentPayload?.accepted).not.toHaveProperty('outputSchema');
+        expect(body.paymentPayload?.accepted).not.toHaveProperty('description');
         return Response.json({ isValid: true, payer: '0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8' });
       }
       return Response.json({ success: true, transaction: '0xNorm' });

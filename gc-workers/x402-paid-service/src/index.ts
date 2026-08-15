@@ -444,14 +444,39 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
   };
 }
 
+/** CDP verify only accepts the v2 PaymentRequirements strip — no outputSchema/description. */
+export function slimPaymentRequirements(req: unknown): Record<string, unknown> | unknown {
+  if (!req || typeof req !== 'object') return req;
+  const r = req as Record<string, unknown>;
+  const extra = (r.extra && typeof r.extra === 'object')
+    ? {
+        name: (r.extra as Record<string, unknown>).name ?? 'USD Coin',
+        version: String((r.extra as Record<string, unknown>).version ?? '2'),
+      }
+    : { name: 'USD Coin', version: '2' };
+  return {
+    scheme: r.scheme ?? 'exact',
+    network: r.network,
+    amount: r.amount ?? r.maxAmountRequired,
+    asset: r.asset,
+    payTo: r.payTo,
+    maxTimeoutSeconds: r.maxTimeoutSeconds ?? 60,
+    extra,
+  };
+}
+
 /** awal / x402 v2 clients often send {x402Version, payload} without `accepted`. */
 export function normalizePaymentPayload(decoded: unknown, accepted: unknown): unknown {
   if (!decoded || typeof decoded !== 'object') return decoded;
   const rec = decoded as Record<string, unknown>;
+  const slim = slimPaymentRequirements(accepted);
   if (rec.payload && rec.accepted == null) {
-    return { ...rec, accepted };
+    return { ...rec, accepted: slim };
   }
-  return decoded;
+  if (rec.accepted && typeof rec.accepted === 'object') {
+    return { ...rec, accepted: slimPaymentRequirements(rec.accepted) };
+  }
+  return rec;
 }
 
 function payment402(paymentRequired: ReturnType<typeof buildPaymentRequired>, error?: string): Response {
@@ -665,7 +690,7 @@ async function handleTier(
     const verifyResp = await facilitatorPost('verify', {
       x402Version: X402_VERSION,
       paymentPayload,
-      paymentRequirements,
+      paymentRequirements: slimPaymentRequirements(paymentRequirements),
     }, env);
 
     if (!verifyResp.ok) {
@@ -696,7 +721,7 @@ async function handleTier(
     const settleResp = await facilitatorPost('settle', {
       x402Version: X402_VERSION,
       paymentPayload,
-      paymentRequirements,
+      paymentRequirements: slimPaymentRequirements(paymentRequirements),
     }, env);
     if (!settleResp.ok) {
       const txt = await settleResp.text();
