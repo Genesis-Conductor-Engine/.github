@@ -499,6 +499,76 @@ describe('x402 Worker paid tier routes', () => {
     expect(ctx.waitUntil).not.toHaveBeenCalled();
   });
 
+  // Regression: /api/pro and /api/specialized used to return `tier.description`
+  // — the marketing blurb — as the paying agent's `result`.
+  it('returns a real metering receipt on a settled /api/pro call, not the tier description', async () => {
+    stubFetch((input) =>
+      String(input).endsWith('/verify')
+        ? Response.json({ isValid: true, payer: '0xPayer' })
+        : Response.json({ success: true, transaction: '0xSettleTx' }),
+    );
+
+    const { response } = await dispatch('/api/pro', {
+      method: 'POST',
+      headers: { 'PAYMENT-SIGNATURE': 'signed-payment', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: 'run' }),
+    });
+
+    expect(response.status).toBe(200);
+    const paid = await responseJson<{
+      delivery: string;
+      result: {
+        receipt: { tier: string; units: number; charged_usd6: string; charged_usd: string; settlement_tx: string | null };
+        execution: { record_type?: string } | null;
+      };
+    }>(response);
+
+    expect(paid.delivery).toBe('metered_execution');
+    expect(typeof paid.result).not.toBe('string');
+    expect(paid.result.receipt.tier).toBe('pro');
+    expect(paid.result.receipt.charged_usd6).toBe('1000000');
+    expect(paid.result.receipt.charged_usd).toBe('1.00');
+    expect(paid.result.receipt.settlement_tx).toBe('0xSettleTx');
+    expect(paid.result.receipt.units).toBeGreaterThan(0);
+    expect(paid.result.execution?.record_type).toBe('rtpTPA_arbitration');
+  });
+
+  it('returns structured on-chain enrichment on a settled /api/specialized call', async () => {
+    stubFetch((input) =>
+      String(input).endsWith('/verify')
+        ? Response.json({ isValid: true, payer: '0xPayer' })
+        : Response.json({ success: true, transaction: '0xSettleTx' }),
+    );
+
+    const { response } = await dispatch('/api/specialized', {
+      method: 'POST',
+      headers: { 'PAYMENT-SIGNATURE': 'signed-payment', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' }),
+    });
+
+    expect(response.status).toBe(200);
+    const paid = await responseJson<{
+      delivery: string;
+      result: {
+        receipt: { tier: string; charged_usd: string };
+        enrichment: { address: string; degraded: boolean; errors: string[]; source: string };
+      };
+    }>(response);
+
+    expect(paid.delivery).toBe('onchain_enrichment');
+    expect(typeof paid.result).not.toBe('string');
+    expect(paid.result.receipt.tier).toBe('specialized');
+    expect(paid.result.receipt.charged_usd).toBe('100.00');
+    expect(paid.result.enrichment.address).toBe(
+      '0x60c4499870f115664d7ffd8411b023dbef3377d9',
+    );
+    expect(paid.result.enrichment.source).toBe('alchemy');
+    // No ALCHEMY_API_KEY in the test env, so it must degrade loudly rather than
+    // silently returning an empty object that looks like a real answer.
+    expect(paid.result.enrichment.degraded).toBe(true);
+    expect(paid.result.enrichment.errors.join(' ')).toMatch(/ALCHEMY_API_KEY/);
+  });
+
   it('fills accepted on a v2 payload so CDP verify sees the requirement awal omitted', async () => {
     httpMocks.decodePaymentSignatureHeader.mockReturnValueOnce({
       x402Version: 2,

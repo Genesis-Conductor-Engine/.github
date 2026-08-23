@@ -15,7 +15,7 @@ import {
 import { probeAlchemySurfaces } from './lib/alchemy/client';
 import { buildHotFundHtml } from './lib/hot-fund';
 import { isAllowedAlchemyRpcUrl, isAllowedCdpBaseRpcUrl } from './lib/rpc-allow';
-import { runRtptpa } from './lib/rtptpa';
+import { deliverTier } from './lib/tier-delivery';
 import type { SecretBindings } from './lib/secrets';
 import type {
   ExecutionContext,
@@ -828,8 +828,22 @@ async function handleTier(
       })
     : null;
 
-  const deliverRtptpa = tier.path === '/api/execute' || tier.path === '/api/inference';
-  const rtptpa = deliverRtptpa ? await runRtptpa(body) : undefined;
+  // What the payment actually buys. Licence tiers are fulfilled via Shopify
+  // above, so they skip delivery entirely; every other tier gets a real
+  // product rather than its own description echoed back. deliverTier never
+  // throws — settlement is already confirmed at this point.
+  const delivery = tier.shopifyUrl
+    ? null
+    : await deliverTier({
+        tierPath: tier.path,
+        body,
+        payer: payerAddress,
+        amountUsd6: requestedEth ? '0' : amount,
+        settlementTx,
+        description: tier.description,
+        asset: requestedEth ? 'ETH' : 'USDC',
+        alchemyKey: env.ALCHEMY_API_KEY,
+      });
 
   const result = tier.shopifyUrl
     ? {
@@ -843,12 +857,13 @@ async function handleTier(
     : {
         success: true,
         tier: tier.path.replace('/api/', ''),
-        result: deliverRtptpa ? rtptpa : tier.description,
+        delivery: delivery?.kind,
+        result: delivery?.result,
         input: body,
         charged_usd6: requestedEth ? '0' : amount,
         charged_eth_wei: requestedEth ? amount : '0',
         payment_asset: requestedEth ? 'ETH' : 'USDC',
-        ...(rtptpa ? { rtptpa } : {}),
+        ...(delivery?.rtptpa ? { rtptpa: delivery.rtptpa } : {}),
       };
 
   return Response.json({
