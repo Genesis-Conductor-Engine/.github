@@ -1,0 +1,73 @@
+name = "x402-paid-service"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[triggers]
+crons = ["0 */6 * * *"]   # gas monitor + cashflow snapshot every 6 hours
+
+# workers.dev is 1050-blocked from several operator IPs. Custom domain is the
+# reachable cashflow + webhook front door. Do not reuse x402.genesisconductor.io
+# — that CNAME is a Cloudflare Tunnel.
+[[routes]]
+pattern = "cashflow.genesisconductor.io"
+custom_domain = true
+
+# Use the existing API_KEYS namespace
+[[kv_namespaces]]
+binding = "API_KEYS"
+id = "4c2c5ef0988742cc8fb98102681d9986"
+
+# Analytics Engine for engagement tracking
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "x402_engagement_metrics"
+
+[vars]
+# Facilitator mode: "cdp" routes through Coinbase CDP (production-grade).
+# Change to "public" to fall back to the rate-limited x402.org/facilitator.
+X402_FACILITATOR_MODE = "cdp"
+# x402 payTo = HOT. Worker only names this address (never signs). Must match all
+# 7 payTo fields in bazaar-listing.json. Do not revert to 0x7cb8….
+VAULT_ADDRESS = "0x60C4499870f115664d7FfD8411b023DBEf3377d9"
+USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+CHAIN_ID = "8453"
+# Legacy single-tier price (backwards compat for /api/execute)
+PRICE_USD6 = "10000"
+# Tiered pricing — USDC 6-decimals (10000 = $0.01, 9999000000 = $9,999)
+# Strategy: low tiers for bazaar discovery + volume; high tiers for /maru-marketplace single-conversion paths
+TIER_DISCOVERY_USD6 = "10000"
+TIER_PRO_USD6 = "1000000"
+TIER_INFERENCE_USD6 = "10000000"
+TIER_SPECIALIZED_USD6 = "100000000"
+TIER_FOUNDERS_USD6 = "4999000000"
+TIER_SOURCE_EXCLUSIVE_USD6 = "9999000000"
+# ETH pricing — 18-decimal wei (calculated at $2000/ETH)
+TIER_DISCOVERY_ETH_WEI = "5000000000000"
+TIER_PRO_ETH_WEI = "500000000000000"
+TIER_INFERENCE_ETH_WEI = "5000000000000000"
+TIER_SPECIALIZED_ETH_WEI = "50000000000000000"
+TIER_FOUNDERS_ETH_WEI = "2499500000000000000"
+TIER_SOURCE_EXCLUSIVE_ETH_WEI = "4999500000000000000"
+# Fulfillment URLs — high-tier endpoints redirect successful payments to existing Shopify SKUs
+SHOPIFY_FOUNDERS_URL = "https://shop.genesisconductor.io/products/gc-founders-license"
+SHOPIFY_SOURCE_EXCLUSIVE_URL = "https://shop.genesisconductor.io/products/gc-source-exclusive"
+# Shopify store domain for Admin API calls
+SHOPIFY_STORE_DOMAIN = "shop.genesisconductor.io"
+# Product variant GIDs — presence enables auto-fulfillment on the high tiers.
+# Until these hold real GIDs, a paid high-tier call still succeeds and returns
+# the settlement tx, but degrades to fulfillment_status "pending_manual".
+# Find one with: shopify product variant IDs, or the Admin API productByHandle.
+SHOPIFY_FOUNDERS_VARIANT_ID = ""
+SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID = ""
+# Secrets required for fulfillment + /health/revenue (set via `wrangler secret put`):
+#   SHOPIFY_ADMIN_TOKEN   Admin API token, needs write_orders + read_orders
+#   SHOPIFY_SHOP_DOMAIN   e.g. "my-store.myshopify.com" (NOT the storefront domain)
+#   REVENUE_TOKEN         bearer token gating GET /health/revenue
+# Gas monitoring — checked every 6h by cron
+# BASE_RPC_URL / CDP_BASE_RPC_URL are secrets, not vars — set with:
+#   wrangler secret put BASE_RPC_URL
+#   wrangler secret put CDP_BASE_RPC_URL
+# CDP Node Base: https://api.developer.coinbase.com/rpc/v1/base/<token> (never commit the token)
+MAIN_WALLET = "0x967a9C352a87D3a72baa7aD10632A7276101dBc9"  # rotated 2026-08-01; old key compromised, see LAUNCH_PLAN.md

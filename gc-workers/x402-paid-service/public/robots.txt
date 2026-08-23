@@ -1,0 +1,57 @@
+# Genesis Conductor - Crawl Directives
+# https://optimization-inversion.genesisconductor.io
+
+# AI/LLM Crawlers - Full Access
+User-agent: GPTBot
+Allow: /
+Allow: /llms.txt
+Allow: /.well-known/
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /llms.txt
+Allow: /.well-known/
+
+User-agent: anthropic-ai
+Allow: /
+Allow: /llms.txt
+Allow: /.well-known/
+
+User-agent: Applebot-Extended
+Allow: /
+Allow: /llms.txt
+
+User-agent: PerplexityBot
+Allow: /
+Allow: /llms.txt
+
+User-agent: YouBot
+Allow: /
+
+# Search Engines - Full Access
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+# Default - Allow all public, block API internals
+User-agent: *
+Allow: /
+Allow: /llms.txt
+Allow: /robots.txt
+Allow: /sitemap.xml
+Allow: /.well-known/
+Disallow: /v1/
+Disallow: /api/
+Disallow: /webhooks/
+Disallow: /admin/
+
+# Sitemap
+Sitemap: https://x402-paid-service.iholt.workers.dev/sitemap.xml
