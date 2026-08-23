@@ -606,11 +606,11 @@ function centsToUsd(cents: number): number {
 }
 
 /**
- * JSON-escape untrusted values before logging so CR/LF and other control
- * characters cannot forge log lines, and truncate to bound log size.
+ * Neutralize CR/LF in untrusted values before logging so they cannot forge
+ * new log lines, and truncate to bound log size.
  */
 function sanitizeForLog(value: unknown): string {
-  return JSON.stringify(String(value)).slice(1, -1).slice(0, 300);
+  return String(value).replace(/[\r\n]/g, '_').slice(0, 300);
 }
 
 // ── High-tier fulfillment ─────────────────────────────────────────────────────

@@ -97,24 +97,56 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
 // Hostname (letters, digits, dots, hyphens) with an optional port. Anything
 // else in a proxy-supplied Host header is rejected so a forged header cannot
 // smuggle a scheme, path, or credentials into the URL we construct below.
-const HOST_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?(?::\d{1,5})?$/;
+const HOST_PATTERN = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?$/;
+const HOST_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789.-:';
 
-/** Return the host only if it looks like a plain hostname[:port]; otherwise undefined. */
+// All printable ASCII except space: everything node:http allows in a request
+// target. Built from constants so rebuilt strings never carry input bytes.
+let PATH_CHARS = '';
+for (let c = 0x21; c <= 0x7e; c += 1) PATH_CHARS += String.fromCharCode(c);
+
+/**
+ * Rebuild `value` character by character out of the constant `charset`, so the
+ * returned string is composed only of charset characters and never of bytes
+ * taken from the untrusted input itself. Returns undefined when any character
+ * falls outside the charset.
+ */
+function rebuildFromCharset(value: string, charset: string): string | undefined {
+  let out = '';
+  for (const ch of value) {
+    const idx = charset.indexOf(ch);
+    if (idx === -1) return undefined;
+    out += charset.charAt(idx);
+  }
+  return out;
+}
+
+/** Return the host only if it is a plain hostname[:port]; otherwise undefined. */
 function safeHost(host: string | undefined): string | undefined {
-  if (host !== undefined && HOST_PATTERN.test(host)) return host;
-  return undefined;
+  if (!host || host.length > 255) return undefined;
+  const rebuilt = rebuildFromCharset(host.toLowerCase(), HOST_CHARS);
+  if (rebuilt === undefined || !HOST_PATTERN.test(rebuilt)) return undefined;
+  return rebuilt;
+}
+
+/** Constrain the request target to printable ASCII, rebuilt from constants. */
+function safePath(path: string | undefined): string {
+  if (!path) return '/';
+  const rebuilt = rebuildFromCharset(path.slice(0, 8192), PATH_CHARS);
+  return rebuilt !== undefined && rebuilt.startsWith('/') ? rebuilt : '/';
 }
 
 /** Adapt a node:http request into a Fetch Request the handler understands. */
 function toFetchRequest(req: IncomingMessage, body: Buffer): Request {
   // Honor a reverse proxy so discovery documents advertise the public host,
-  // but only after validating it against HOST_PATTERN. This Request is handed
-  // to the local worker handler, never fetched over the network.
+  // but only after validating and rebuilding it from constant charsets. This
+  // Request is handed to the local worker handler, never fetched over the
+  // network.
   const host =
     safeHost(firstHeader(req.headers['x-forwarded-host'])) ??
     safeHost(req.headers.host) ??
     'localhost';
-  const url = `http://${host}${req.url ?? '/'}`;
+  const url = `http://${host}${safePath(req.url)}`;
 
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
