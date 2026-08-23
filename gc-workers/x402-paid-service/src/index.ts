@@ -83,7 +83,24 @@ const PUBLIC_FACILITATOR = 'https://x402.org/facilitator';
 const CDP_FACILITATOR = 'https://api.cdp.coinbase.com/platform/v2/x402';
 const CDP_FACILITATOR_HOST = 'api.cdp.coinbase.com';
 const CDP_FACILITATOR_PATH = '/platform/v2/x402';
-const ETH_SETTLEMENT_ENABLED: boolean = true;
+/**
+ * Native ETH cannot be settled under the x402 `exact` scheme, which is
+ * EIP-3009 `transferWithAuthorization` — an ERC-20 method. Its EIP-712 domain
+ * needs a verifying *contract address*, and `asset: 'native'` is not one, so
+ * the facilitator cannot even build the domain hash to check a signature:
+ *
+ *   CDP verify -> "failed to hash domain: provided data '0xnative'
+ *                  doesn't match type 'address'"  (invalid_exact_evm_payload_signature)
+ *
+ * That is not a bad-signature failure — NO signature can satisfy it. Advertising
+ * the leg anyway put a permanently unverifiable option on the menu of every
+ * agent that read our 402, next to two that work. Same defect class as the Base
+ * USDC address once advertised on Polygon (see USDC_POLYGON above): a
+ * requirement that can never settle is worse than one that is absent.
+ *
+ * Re-enabling needs a scheme that can express native value, not a flag flip.
+ */
+const ETH_SETTLEMENT_ENABLED: boolean = false;
 
 // ── Env types ─────────────────────────────────────────────────────────────────
 interface Env {

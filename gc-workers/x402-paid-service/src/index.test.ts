@@ -34,7 +34,6 @@ const HOST = 'https://worker.example';
 const VAULT = '0x000000000000000000000000000000000000dEaD';
 const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const USDC_POLYGON = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359';
-const WETH_BASE = '0x4200000000000000000000000000000000000006';
 const PUBLIC_FACILITATOR = 'https://x402.org/facilitator';
 const CDP_FACILITATOR = 'https://api.cdp.coinbase.com/platform/v2/x402';
 
@@ -155,7 +154,8 @@ describe('x402 Worker discovery routes', () => {
       status: 'ok',
       tiers: 6,
       vault: VAULT,
-      eth_pricing_enabled: true,
+      // Native ETH is unsettleable under the EIP-3009 `exact` scheme.
+      eth_pricing_enabled: false,
     });
   });
 
@@ -326,14 +326,11 @@ describe('x402 Worker paid tier routes', () => {
     expect(httpMocks.encodePaymentRequiredHeader).toHaveBeenCalledWith(expect.objectContaining({ x402Version: 2 }));
   });
 
-  it('keeps the Polygon leg in USDC even when the caller pays in ETH', async () => {
-    // Polygon's native coin is POL, not ETH, and the ETH-denominated wei amount
-    // is meaningless there. Carrying the Base leg's 'native' asset across would
-    // advertise POL priced as if it were ether, labelled "USD Coin".
-    const { response } = await dispatch('/api/execute', {
-      method: 'POST',
-      headers: { 'X-PAYMENT-ASSET': 'ETH' },
-    });
+  it('keeps the Polygon leg in USDC, priced in USDC minor units', async () => {
+    // Polygon's native coin is POL, not ETH, and an ETH-denominated wei amount
+    // is meaningless there. Carrying a 'native' asset across would advertise
+    // POL priced as if it were ether, labelled "USD Coin".
+    const { response } = await dispatch('/api/execute', { method: 'POST' });
 
     const body = await responseJson<{
       accepts: Array<{ network: string; asset: string; amount: string }>;
@@ -344,8 +341,25 @@ describe('x402 Worker paid tier routes', () => {
     expect(polygon).toBeDefined();
     expect(polygon!.asset).toBe(USDC_POLYGON);
     expect(polygon!.asset).not.toBe('native');
-    // Priced in USDC minor units, not the ETH wei figure the Base leg uses.
+    // Priced in USDC minor units, not an ETH wei figure.
     expect(polygon!.amount).toBe('10000');
+  });
+
+  it('advertises no payment option that the exact scheme cannot verify', async () => {
+    // Regression guard for the native-ETH leg. CDP rejected `asset: 'native'`
+    // with "failed to hash domain: provided data '0xnative' doesn't match type
+    // 'address'" — EIP-3009 needs a real ERC-20 contract, so no signature could
+    // ever satisfy that requirement. Every advertised asset must be an address.
+    for (const path of ['/api/execute', '/api/pro', '/api/founders']) {
+      const { response } = await dispatch(path, { method: 'POST' });
+      const body = await responseJson<{ accepts: Array<{ asset: string; scheme: string }> }>(response);
+
+      expect(body.accepts.length).toBeGreaterThan(0);
+      for (const accept of body.accepts) {
+        expect(accept.scheme).toBe('exact');
+        expect(accept.asset).toMatch(/^0x[0-9a-fA-F]{40}$/);
+      }
+    }
   });
 
   it('accepts an explicit USDC payment-asset request', async () => {
@@ -362,7 +376,10 @@ describe('x402 Worker paid tier routes', () => {
     });
   });
 
-  it.each(['ETH', 'WETH'])('returns ETH pricing when %s payment asset is requested', async (asset) => {
+  it.each(['ETH', 'WETH'])('refuses %s payment rather than quoting an unsettleable price', async (asset) => {
+    // Quoting ETH would hand the caller an EIP-3009 requirement with no token
+    // contract to sign against, so it can never verify. Fail closed, in the
+    // caller's own request, instead of after they have signed something.
     const { response } = await dispatch('/api/pro', {
       method: 'POST',
       headers: { 'X-PAYMENT-ASSET': asset },
@@ -375,12 +392,9 @@ describe('x402 Worker paid tier routes', () => {
       TIER_SOURCE_EXCLUSIVE_ETH_WEI: '4999500000000000000',
     });
 
-    expect(response.status).toBe(402);
-    const body = await responseJson<{ accepts: Array<{ amount: string; asset: string }> }>(response);
-    expect(body.accepts[0]).toMatchObject({
-      amount: '500000000000000',
-      asset: 'native',
-    });
+    expect(response.status).toBe(400);
+    const body = await responseJson<{ error: string }>(response);
+    expect(body.error).toContain('USDC is required');
   });
 
   it('rejects malformed payment signatures before calling the facilitator', async () => {
