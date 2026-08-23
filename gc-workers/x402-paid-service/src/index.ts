@@ -605,12 +605,24 @@ function centsToUsd(cents: number): number {
   return Math.round(cents) / 100;
 }
 
+// Printable ASCII, built from constants so sanitized log output is composed
+// only of characters taken from this string, never bytes from the input.
+let LOG_CHARS = '';
+for (let c = 0x20; c <= 0x7e; c += 1) LOG_CHARS += String.fromCharCode(c);
+
 /**
- * Neutralize CR/LF in untrusted values before logging so they cannot forge
- * new log lines, and truncate to bound log size.
+ * Rebuild untrusted values from a constant printable-ASCII charset before
+ * logging, so control characters (CR/LF included) cannot forge log lines.
+ * Truncates to bound log size.
  */
 function sanitizeForLog(value: unknown): string {
-  return String(value).replace(/[\r\n]/g, '_').slice(0, 300);
+  const str = String(value).replace(/[\r\n]/g, '_').slice(0, 300);
+  let out = '';
+  for (const ch of str) {
+    const idx = LOG_CHARS.indexOf(ch);
+    out += idx === -1 ? '_' : LOG_CHARS.charAt(idx);
+  }
+  return out;
 }
 
 // ── High-tier fulfillment ─────────────────────────────────────────────────────
