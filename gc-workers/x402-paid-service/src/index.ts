@@ -605,6 +605,14 @@ function centsToUsd(cents: number): number {
   return Math.round(cents) / 100;
 }
 
+/**
+ * JSON-escape untrusted values before logging so CR/LF and other control
+ * characters cannot forge log lines, and truncate to bound log size.
+ */
+function sanitizeForLog(value: unknown): string {
+  return JSON.stringify(String(value)).slice(1, -1).slice(0, 300);
+}
+
 // ── High-tier fulfillment ─────────────────────────────────────────────────────
 
 interface FulfillmentOutcome {
@@ -639,7 +647,7 @@ async function fulfillHighTier(
 ): Promise<FulfillmentOutcome> {
   const supportRef = `${payer}:${settlementTx ?? 'no-tx'}`;
   const degraded = (reason: string): FulfillmentOutcome => {
-    console.error(`[fulfill] ${tier.path} ${reason} — ref=${supportRef}`);
+    console.error(`[fulfill] ${tier.path} ${sanitizeForLog(reason)} ref=${sanitizeForLog(supportRef)}`);
     return {
       fulfillment_status: 'pending_manual',
       order_id: null,
@@ -762,7 +770,7 @@ async function handleTier(
 
     if (!verifyResp.ok) {
       const txt = await verifyResp.text();
-      console.error(`[verify] facilitator HTTP ${verifyResp.status}: ${txt}`);
+      console.error(`[verify] facilitator HTTP ${verifyResp.status}: ${sanitizeForLog(txt)}`);
       const hint = await describeVerifyFailure(txt, paymentPayload, cashflowRpc(env));
       return payment402(paymentRequired, hint);
     }
@@ -772,7 +780,7 @@ async function handleTier(
   }
 
   if (!verifyResult.isValid) {
-    console.error(`[verify] invalid: ${verifyResult.invalidReason ?? verifyResult.invalidMessage ?? 'Payment invalid'}`);
+    console.error(`[verify] invalid: ${sanitizeForLog(verifyResult.invalidReason ?? verifyResult.invalidMessage ?? 'Payment invalid')}`);
     return payment402(paymentRequired, verifyResult.invalidReason ?? verifyResult.invalidMessage ?? 'Payment invalid');
   }
 
@@ -793,7 +801,7 @@ async function handleTier(
     }, env);
     if (!settleResp.ok) {
       const txt = await settleResp.text();
-      console.error(`[settle] facilitator HTTP ${settleResp.status}: ${txt}`);
+      console.error(`[settle] facilitator HTTP ${settleResp.status}: ${sanitizeForLog(txt)}`);
       return payment402(paymentRequired, `Settlement failed: ${txt}`);
     }
     settleResult = (await settleResp.json()) as typeof settleResult;
@@ -802,7 +810,7 @@ async function handleTier(
     return Response.json({ error: 'Settlement request failed', detail: String(e) }, { status: 502 });
   }
   if (!settleResult.success) {
-    console.error(`[settle] not settled: ${settleResult.errorReason ?? 'unknown reason'}`);
+    console.error(`[settle] not settled: ${sanitizeForLog(settleResult.errorReason ?? 'unknown reason')}`);
     return payment402(paymentRequired, settleResult.errorReason ?? 'Settlement not completed');
   }
 

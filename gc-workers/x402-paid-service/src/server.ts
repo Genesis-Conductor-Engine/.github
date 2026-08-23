@@ -94,11 +94,26 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
+// Hostname (letters, digits, dots, hyphens) with an optional port. Anything
+// else in a proxy-supplied Host header is rejected so a forged header cannot
+// smuggle a scheme, path, or credentials into the URL we construct below.
+const HOST_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?(?::\d{1,5})?$/;
+
+/** Return the host only if it looks like a plain hostname[:port]; otherwise undefined. */
+function safeHost(host: string | undefined): string | undefined {
+  if (host !== undefined && HOST_PATTERN.test(host)) return host;
+  return undefined;
+}
+
 /** Adapt a node:http request into a Fetch Request the handler understands. */
 function toFetchRequest(req: IncomingMessage, body: Buffer): Request {
-  // Honor a reverse proxy so discovery documents advertise the public host.
-  const fwdHost = firstHeader(req.headers['x-forwarded-host']);
-  const host = fwdHost ?? req.headers.host ?? 'localhost';
+  // Honor a reverse proxy so discovery documents advertise the public host,
+  // but only after validating it against HOST_PATTERN. This Request is handed
+  // to the local worker handler, never fetched over the network.
+  const host =
+    safeHost(firstHeader(req.headers['x-forwarded-host'])) ??
+    safeHost(req.headers.host) ??
+    'localhost';
   const url = `http://${host}${req.url ?? '/'}`;
 
   const headers = new Headers();
