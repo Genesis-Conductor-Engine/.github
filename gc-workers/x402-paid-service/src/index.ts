@@ -862,6 +862,9 @@ async function handleTier(
         settlementTx,
         description: tier.description,
         asset: requestedEth ? 'ETH' : 'USDC',
+        // Raw settled amount in the asset's own base units (wei for ETH), so an
+        // ETH receipt records the real charge instead of asserting $0.00.
+        amountRaw: amount,
         alchemyKey: env.ALCHEMY_API_KEY,
       });
 
