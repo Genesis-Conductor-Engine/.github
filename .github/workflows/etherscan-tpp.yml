@@ -1,0 +1,64 @@
+name: Etherscan TPP Workflows
+
+on:
+  workflow_dispatch:
+    inputs:
+      address:
+        description: 'Wallet/contract address'
+        required: false
+        default: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
+      chain:
+        description: 'Chain slug or ID'
+        required: false
+        default: 'ethereum'
+  schedule:
+    - cron: '0 */6 * * *'  # every 6h - matches x402 cashflow
+  push:
+    paths: ['.github/workflows/etherscan-tpp.yml']
+
+jobs:
+  tpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Etherscan CLI
+        run: curl -fsSL https://raw.githubusercontent.com/etherscan/etherscan-cli/master/scripts/install.sh | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: Verify
+        run: etherscan version && etherscan chains --compact | head -n 20
+      - name: Wallet activity (TPP - follow)
+        env:
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          ADDR="${{ inputs.address || '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' }}"
+          CHAIN="${{ inputs.chain || 'ethereum' }}"
+          echo "=== TPP: Follow wallet $ADDR on $CHAIN ==="
+          etherscan --chain $CHAIN account balance $ADDR
+          etherscan --chain $CHAIN account txlist $ADDR --page 1 --offset 10 --compact | jq '.[0]'
+          etherscan --chain $CHAIN account tokentx $ADDR -o csv > tokentx.csv
+          cat tokentx.csv | head -n 5
+      - name: Inspect contract (TPP - contract)
+        env:
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          etherscan contract getabi 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 --chain ethereum | jq '.[:200]'
+          etherscan contract getsourcecode 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 --chain ethereum -o table | head -n 20
+      - name: Switch chains (TPP - multi-chain)
+        env:
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          etherscan --chain arbitrum gastracker oracle
+          etherscan --chain 42161 account balance 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+      - name: Build agent JSON (TPP - structured output)
+        env:
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          etherscan account txlist 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 --compact --all --max-pages 2 > txlist.json
+          jq 'length' txlist.json
+          cat txlist.json | head -n 40
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: etherscan-tpp-${{ github.run_id }}
+          path: |
+            tokentx.csv
+            txlist.json
