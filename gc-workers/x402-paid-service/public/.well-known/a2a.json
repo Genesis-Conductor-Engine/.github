@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.3",
+  "agent_id": "x402-paid-service",
+  "name": "x402 Paid Service",
+  "description": "USDC micropayment gateway for agent-to-agent commerce",
+  "capabilities": ["payment", "x402", "micropayments"],
+  "endpoints": {
+    "api": "https://x402-paid-service.iholt.workers.dev/api",
+    "health": "https://x402-paid-service.iholt.workers.dev/health"
+  },
+  "payment": {
+    "network": "base",
+    "token": "USDC",
+    "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  }
+}
