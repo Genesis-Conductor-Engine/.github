@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://genesisconductor.io/schemas/knowledge-node.schema.json",
+  "title": "Genesis Conductor Knowledge Node Coin",
+  "type": "object",
+  "required": ["id", "name", "type"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "type": {
+      "type": "string",
+      "enum": [
+        "origin",
+        "category",
+        "system",
+        "product_domain",
+        "protocol_loop",
+        "compute_partnership",
+        "affiliate",
+        "legal_ops",
+        "federal_affiliation"
+      ]
+    },
+    "label": { "type": "string" },
+    "url": { "type": ["string", "null"], "format": "uri" },
+    "since": { "type": ["string", "null"] },
+    "public": {
+      "oneOf": [
+        { "type": "boolean" },
+        { "type": "string", "enum": ["restore"] },
+        { "type": "null" }
+      ]
+    },
+    "partner": { "type": "string" },
+    "role": { "type": "string" },
+    "award": { "type": "string" }
+  },
+  "additionalProperties": true
+}

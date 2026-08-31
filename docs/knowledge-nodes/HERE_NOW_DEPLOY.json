@@ -1,0 +1,9 @@
+{
+  "siteUrl": "https://nimble-gable-kt6v.here.now/",
+  "slug": "nimble-gable-kt6v",
+  "claimUrl": "https://here.now/claim?slug=nimble-gable-kt6v&token=f74a21bdaa4f6d5cd2022a89597178cf4d055199cce1ec5e28c07eb1237a3d76",
+  "claimToken": "f74a21bdaa4f6d5cd2022a89597178cf4d055199cce1ec5e28c07eb1237a3d76",
+  "expiresAt": "2026-07-31T16:24:32.054Z",
+  "auth": "anonymous",
+  "vercel": "https://knowledge-nodes-henna.vercel.app/"
+}
