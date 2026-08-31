@@ -16,6 +16,7 @@ import { probeAlchemySurfaces } from './lib/alchemy/client';
 import { buildHotFundHtml } from './lib/hot-fund';
 import { isAllowedAlchemyRpcUrl, isAllowedCdpBaseRpcUrl } from './lib/rpc-allow';
 import { deliverTier } from './lib/tier-delivery';
+import { quoteSponsorship } from './lib/sponsor-userop';
 import type { SecretBindings } from './lib/secrets';
 import type {
   ExecutionContext,
@@ -104,6 +105,7 @@ interface Env {
   TIER_SPECIALIZED_USD6: string;
   TIER_FOUNDERS_USD6: string;
   TIER_SOURCE_EXCLUSIVE_USD6: string;
+  TIER_SPONSOR_USD6: string;
   // ETH pricing tiers (wei)
   TIER_DISCOVERY_ETH_WEI: string;
   TIER_PRO_ETH_WEI: string;
@@ -111,6 +113,11 @@ interface Env {
   TIER_SPECIALIZED_ETH_WEI: string;
   TIER_FOUNDERS_ETH_WEI: string;
   TIER_SOURCE_EXCLUSIVE_ETH_WEI: string;
+  TIER_SPONSOR_ETH_WEI: string;
+  /** Optional deployed WQFLOPPaymaster on Base. Quote-only if unset. */
+  PAYMASTER_ADDRESS?: string;
+  /** Wei cap for EntryPoint deposit used in sponsorship quotes. Default 0.05 ETH. */
+  PAYMASTER_DEPOSIT_CAP_WEI?: string;
   // Solana config
   SOLANA_USDC_MINT: string;
   SOLANA_RPC_URL: string;
@@ -236,6 +243,16 @@ const TIERS: TierConfig[] = [
     ethAsset: 'native',
     shopifyUrl: (e) => e.SHOPIFY_SOURCE_EXCLUSIVE_URL,
     shopifyVariantId: (e) => e.SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID,
+  },
+  {
+    path: '/api/sponsor-userop',
+    getAmount: (e) => e.TIER_SPONSOR_USD6 || '100000',
+    getEthAmount: (e) => e.TIER_SPONSOR_ETH_WEI || '50000000000000',
+    description:
+      'ERC-4337 v0.6 UserOp sponsorship quote billed in USDC on Base. Worker never signs and never broadcasts; EntryPoint deposit is capped (default 0.05 ETH). Keywords: paymaster, erc-4337, userop, gas sponsorship, account abstraction, usdc gas.',
+    displayPrice: '$0.10',
+    asset: USDC_BASE,
+    ethAsset: 'native',
   },
 ];
 
@@ -852,7 +869,9 @@ async function handleTier(
   // above, so they skip delivery entirely; every other tier gets a real
   // product rather than its own description echoed back. deliverTier never
   // throws — settlement is already confirmed at this point.
-  const delivery = tier.shopifyUrl
+  const sponsor = tier.path === '/api/sponsor-userop' ? quoteSponsorship(body, env) : undefined;
+
+  const delivery = tier.shopifyUrl || sponsor
     ? null
     : await deliverTier({
         tierPath: tier.path,
@@ -887,6 +906,7 @@ async function handleTier(
         charged_eth_wei: requestedEth ? amount : '0',
         payment_asset: requestedEth ? 'ETH' : 'USDC',
         ...(delivery?.rtptpa ? { rtptpa: delivery.rtptpa } : {}),
+        ...(sponsor ? { sponsor } : {}),
       };
 
   return Response.json({
@@ -894,6 +914,7 @@ async function handleTier(
     payer: payerAddress,
     settlement_tx: settlementTx,
     ...(fulfillment ?? {}),
+    ...(sponsor ? { sponsor } : {}),
   });
 }
 
@@ -1006,7 +1027,7 @@ function buildLlmsTxt(hostname: string) {
 
   return `# Genesis Conductor x402 Tiered Service
 
-> Paid API using the x402 protocol on Base + Polygon. Six tiers from $0.01 to $9,999.
+> Paid API using the x402 protocol on Base + Polygon. ${TIERS.length} tiers from $0.01 to $9,999, including UserOp sponsorship ($0.10).
 
 ## Overview
 - **Networks**: Base mainnet (eip155:8453), Polygon mainnet (eip155:137)
@@ -1149,7 +1170,7 @@ export default {
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebAPI","name":"Genesis Conductor x402 Tiered Service","url":"https://${hostname}"}</script>
 </head><body>
   <h1>Genesis Conductor x402 Tiered Service</h1>
-  <p>Six tiers of paid API access — pay <strong>USDC</strong> or <strong>ETH</strong> on Base, or <strong>USDC</strong> on Solana.</p>
+  <p>${TIERS.length} tiers of paid API access — pay <strong>USDC</strong> or <strong>ETH</strong> on Base, or <strong>USDC</strong> on Solana.</p>
   <table border="1" cellpadding="4"><thead><tr><th>Endpoint</th><th>Price</th><th>Description</th></tr></thead>
   <tbody>${tierRows}</tbody></table>
   <p>See <a href="/llms.txt">/llms.txt</a>, <a href="/.well-known/x402">/.well-known/x402</a>, or the <a href="/cashflow">internal cashflow dashboard</a>.</p>
@@ -1378,7 +1399,7 @@ export default {
         name_for_human: 'Genesis Conductor x402',
         name_for_model: 'genesis_conductor_x402',
         description_for_human: 'Six-tier paid API using USDC, ETH, and Solana USDC micropayments on Base',
-        description_for_model: 'Six tiers of paid API access ($0.01–$9,999). Supports USDC, ETH, and Solana USDC. Call /.well-known/x402 first, then retry with PAYMENT-SIGNATURE or X-SOLANA-SIGNATURE header.',
+        description_for_model: `${TIERS.length} tiers of paid API access ($0.01–$9,999, plus $0.10 UserOp sponsorship). Supports USDC, ETH, and Solana USDC. Call /.well-known/x402 first, then retry with PAYMENT-SIGNATURE or X-SOLANA-SIGNATURE header.`,
         auth: { type: 'none' },
         api: { type: 'openapi', url: `https://${hostname}/openapi.json` },
         contact_email: 'api@genesisconductor.io',
