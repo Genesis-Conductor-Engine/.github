@@ -153,7 +153,7 @@ describe('x402 Worker discovery routes', () => {
     expect(health.response.status).toBe(200);
     await expect(responseJson<Record<string, unknown>>(health.response)).resolves.toMatchObject({
       status: 'ok',
-      tiers: 6,
+      tiers: 7,
       vault: VAULT,
       eth_pricing_enabled: true,
     });
@@ -177,8 +177,9 @@ describe('x402 Worker discovery routes', () => {
     const x402Body = await responseJson<{ endpoints: Array<{ path: string; shopify_url?: string }> }>(
       (await dispatch('/.well-known/x402')).response,
     );
-    expect(x402Body.endpoints).toHaveLength(6);
+    expect(x402Body.endpoints).toHaveLength(7);
     expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/founders');
+    expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/sponsor-userop');
     expect(x402Body.endpoints.find((endpoint) => endpoint.path === '/api/founders')).toMatchObject({
       shopify_url: 'https://shop.example/founders',
     });
