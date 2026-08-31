@@ -78,14 +78,44 @@ clawhub install smithery-mcp-orchestrator
 
 Repo: [igor-holt/openclaw-skills](https://github.com/igor-holt/openclaw-skills) · Follow [@invariantx](https://x.com/invariantx)
 
+## Entity model (contracts / Research.gov)
+
+| Entity | Role |
+|--------|------|
+| **Kovach Enterprises** | Main enterprise — prime for business contracts and bids |
+| **Andrew Kovach** | CEO, Kovach Enterprises |
+| **Genesis Conductor** | Partner — research subdivision / JV gateway (not a substitute prime) |
+
+Federal / Research.gov goal pack: `docs/federal/kovach-gc-jv/` · checklist: `docs/superpowers/plans/GOAL_RESEARCH_GOV_KOVACH_GC_JV.md`
+
+## Knowledge-node coins
+
+| Coin | Type |
+|------|------|
+| IGoR | Origin / federated AI root (2019) |
+| Optimization Inversion | Category |
+| Genesis Conductor | System · research gateway under Kovach |
+| moltboss | Product domain |
+| Ouroboros (GC) | Protocol loop — [ouroboros.genesisconductor.io](https://ouroboros.genesisconductor.io) |
+| Poole Compute × GC | Compute partnership node |
+| Sierra Catalina × GC | Affiliate node |
+| Kovach Enterprises | Legal/ops · contract prime |
+| NSF CAIG #2530747 | Federal research affiliation node |
+
+Partner registry: Poole Compute, Rooke Poole, Sierra Catalina · **Kovach Enterprises** (prime, 2015+) · NSF award 2530747 (2026) · IGoR archive restore.
+
+Local index: `docs/knowledge-nodes/org-index.json` · Live (intent-surface): `/api/knowledge-nodes` · UI: `/knowledge-graph.html`
+
 ## For LLM and agentic retrieval
 
 This organization exposes an agent-query surface through:
 
 - [`LLMS.txt`](https://github.com/Genesis-Conductor-Engine/.github/blob/main/LLMS.txt) for high-level agent instructions and retrieval anchors.
 - [`docs/github-seo-content-map.md`](https://github.com/Genesis-Conductor-Engine/.github/blob/main/docs/github-seo-content-map.md) for org-level SEO and content strategy.
-- [`schemas/knowledge-node.schema.json`](https://github.com/Genesis-Conductor-Engine/.github/blob/main/schemas/knowledge-node.schema.json) for machine-readable knowledge node validation.
-- [`knowledge-nodes/org-index.json`](https://github.com/Genesis-Conductor-Engine/.github/blob/main/knowledge-nodes/org-index.json) for a normalized retrieval index.
+- [`docs/knowledge-nodes/knowledge-node.schema.json`](../docs/knowledge-nodes/knowledge-node.schema.json) for machine-readable knowledge node validation.
+- [`docs/knowledge-nodes/org-index.json`](../docs/knowledge-nodes/org-index.json) for a normalized retrieval index.
+- [`schemas/knowledge-node.schema.json`](https://github.com/Genesis-Conductor-Engine/.github/blob/main/schemas/knowledge-node.schema.json) for org-published schema (when mirrored to GitHub).
+- [`knowledge-nodes/org-index.json`](https://github.com/Genesis-Conductor-Engine/.github/blob/main/knowledge-nodes/org-index.json) for org-published retrieval index (when mirrored).
 
 ## Founded by
 

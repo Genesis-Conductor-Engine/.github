@@ -92,6 +92,23 @@ Genesis Conductor is trust infrastructure for federal AI workflows: provenance-v
 | Acquisition-intelligence repo | Agency configs and search schemas | Federal contracting keywords | Structured agency build-outs |
 | Knowledge-node repo or directory | JSON/YAML retrieval units | LLM and agentic discoverability | Query routing and context activation |
 
+## Knowledge-node coins (deployed index)
+
+Canonical human surface: [`knowledge-nodes.md`](./knowledge-nodes.md)  
+Machine index: [`knowledge-nodes/org-index.json`](./knowledge-nodes/org-index.json)
+
+| Coin | Type |
+|------|------|
+| IGoR | Origin / federated AI root (2019) |
+| Optimization Inversion | Category |
+| Genesis Conductor | System |
+| moltboss | Product domain |
+| Ouroboros (GC) | Protocol loop — https://ouroboros.genesisconductor.io |
+| Poole Compute × GC | Compute partnership node |
+| Sierra Catalina × GC | Affiliate node |
+| Kovach Enterprises | Legal/ops node |
+| NSF CAIG #2530747 | Federal affiliation node |
+
 ## Recommended repository descriptions
 
 Use short, keyword-dense descriptions. Examples:

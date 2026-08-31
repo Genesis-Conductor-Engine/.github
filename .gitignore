@@ -7,6 +7,7 @@
 !/.gitignore
 !/.gitmodules
 !/AGENTS.md
+!/CLAUDE.md
 !/LLMS.txt
 !/copilot-instructions.md
 !/llms.txt
@@ -16,7 +17,10 @@
 !/azure.yaml
 
 !/.claude/
-/.claude/*
+ /.claude/*
+
+!/negotiate-x402/
+!/negotiate-x402/**
 !/.claude/launch.json
 
 !/.claude-plugin/

@@ -19,12 +19,27 @@ Operator runbook: [`INCOMPLETE_GOALS_RUNBOOK.md`](./INCOMPLETE_GOALS_RUNBOOK.md)
 
 | Goal | Evidence | Terminal blocker | Status |
 |------|----------|------------------|--------|
+| **Research.gov + bid authorization (Kovach prime · GC research JV gateway)** | Goal + pack: [`GOAL_RESEARCH_GOV_KOVACH_GC_JV.md`](./GOAL_RESEARCH_GOV_KOVACH_GC_JV.md), [`docs/federal/kovach-gc-jv/`](../../federal/kovach-gc-jv/). **DUNS exists** (vault). Clearance network **internal only** (not marketing). **FFL expansion** open | **Human:** SAM Active+UEI; Research.gov login; FFL expansion track. Agent scaffolding complete | **not_reached** (scaffolding_complete) |
 | **Fund agent gas / unlock 14.45 ETH treasury** | `agent-gas-status.json`; 29 agents `GAS_STARVED`; `can_sign=false` on `0x54E2…` | No `TREASURY_PRIVATE_KEY` on disk/SSD/SOPS | **not_reached** |
 | **Safe n1 execute** | Safe API: nonce 1, **1/2** sigs, stale 1inch swap | Need owner `0x6059…` or `0x0294…` | **not_reached** |
 | **Liquidity flywheel seed ≥0.033 ETH → hot `0x60C4…`** | BASE_OPS_APPROVED; flywheel timer armed | Controllable ETH dust (~1.7e-3) | **not_reached** |
 | **x402 mainnet settlement (CDP facilitator)** | Session `9107b938…`; LAUNCH_PLAN; `mode=public` cannot settle mainnet | CDP secrets falsy at Worker runtime historically | **partial** (code/audit done; settlement path uncertain) |
 | **$2,184 USDC / 1 ETH-day revenue** | HANDOFF.md, session `700dd0dc…`, MEMORY `project_x402_revenue` | Micropayment math no-win; marketplace reframe exists | **not_reached** (literal); **reframe exceeded on catalog** |
 | **GCP/AWS/Azure marketplace drafts GC-RL-004…007** | MEMORY `project_marketplace-draft-agent` | Manual cloud login | **not_reached** (paused) |
+| **wQFLOP real liquidity (Aerodrome WETH side)** | Goal: [`GOAL_WQFLOP_LIQUIDITY.md`](./GOAL_WQFLOP_LIQUIDITY.md); truth CLI `wQFLOP/liquidity/`. Measured real TVL ~$3.59; paper TVL invalid | **Human:** gas refuel + real WETH; key rotation if compromised | **not_reached** |
+| **Diamondnode inference throughput (GTX 1650 + THRML + CUDA-Q)** | Goal: [`GOAL_DIAMONDNODE_INFERENCE_THROUGHPUT.md`](./GOAL_DIAMONDNODE_INFERENCE_THROUGHPUT.md). Deploy Phi-4-mini (3.8B Q4), THRML JAX GPU, CUDA-Q QUBO solver. Exceed Claude Pro/ChatGPT Business/Grok throughput. | SSH diamondnode; install Ollama, JAX CUDA, CUDA-Q; benchmark | **not_reached** |
+
+### Subgoal — Research.gov / contracts (detail)
+
+**Parent:** Become established and authorized to bid on and interact in business contracts and bids involving Research.gov / federal research acquisition surfaces.
+
+| Entity | Role |
+|--------|------|
+| **Kovach Enterprises** | Main enterprise — prime for contracts/bids |
+| **Genesis Conductor** | Partner — research subdivision / JV gateway (not a substitute prime) |
+
+**Workstreams:** SG-1 entity/legal · SG-2 Research.gov/NSF · SG-3 SAM.gov eligibility (Kovach) · SG-4 bid/proposal loop · SG-5 public copy consistency. Full checklist: [`GOAL_RESEARCH_GOV_KOVACH_GC_JV.md`](./GOAL_RESEARCH_GOV_KOVACH_GC_JV.md).  
+**Agent pack:** [`docs/federal/kovach-gc-jv/`](../../federal/kovach-gc-jv/) — affiliation memo, bid vehicle A+C, NSF readiness, SAM checklist, capability template, bid runbook, dry-run skeleton, public audit.
 
 ---
 

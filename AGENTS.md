@@ -18,9 +18,11 @@ Verify with `git ls-files`. Allowlisted:
 - `gc-workers/` only `x402-paid-service/`, `gc-crew-mcp-bridge/`, `intent-surface/`
 - Submodule `euler-cycle-attestor/lib/openzeppelin-contracts` only
 
-Allowlisted but often uncommitted: `gc-workers/intent-surface/`, `docs/federal/`, `docs/knowledge-nodes/`, `GOAL_*.md`, this `AGENTS.md`.
+Allowlisted but often uncommitted: `gc-workers/intent-surface/`, `docs/federal/`, `docs/knowledge-nodes/`, `GOAL_*.md`.
 
 Other `~/gc-workers/*` dirs are local only — edit freely, do not assume git tracks them.
+
+Legacy tracked exceptions (pre-.gitignore): `gc-workers/gc-16-capsule-bridge/public/llms.txt` and `gc-workers/gc-greg-hook/public/llms.txt` remain tracked despite not being in the allowlist.
 
 ## Active constraints
 **goal/research-gov-kovach-gc-jv** not_reached
@@ -134,4 +136,4 @@ Bash permission allowlist: `git/npm/npx/node/python3/docker/wrangler/curl/cat/ls
 ## Other AGENTS.md
 Read when working there: `~/Desktop/openclaw/`, `~/Desktop/genesis-conductor-app/`, `~/Desktop/Diamond-V/`, `~/yennefer-mesh/`, `~/here.now/`, `~/gc-workers/*/`, `~/.openclaw/workspace/`, `~/.codex/`, `~/sota/`, `~/SEAR/sear/`, diamondnode `~/AGENTS.md`.
 
-*Reconciled 2026-08-15 against git ls-files, wrangler.toml, live cashflow.genesisconductor.io, .gitignore allowlist.*
+*Reconciled 2026-08-23 against git ls-files, wrangler.toml, live cashflow.genesisconductor.io, .gitignore allowlist.*
