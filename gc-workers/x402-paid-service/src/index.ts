@@ -12,6 +12,9 @@ import {
   refreshSnapshot,
   resolveCashflowSnapshot,
 } from './lib/cashflow';
+import { probeAlchemySurfaces } from './lib/alchemy/client';
+import { buildHotFundHtml } from './lib/hot-fund';
+import { isAllowedAlchemyRpcUrl, isAllowedCdpBaseRpcUrl } from './lib/rpc-allow';
 import { runRtptpa } from './lib/rtptpa';
 import type { SecretBindings } from './lib/secrets';
 import type {
@@ -130,6 +133,8 @@ interface Env {
   // Gas monitoring + Alchemy (Base RPC secret; optional key for Solana RPC)
   ALCHEMY_BASE_RPC_URL?: string;
   BASE_RPC_URL?: string;
+  /** CDP Node Base mainnet RPC (api.developer.coinbase.com/rpc/v1/base/…). Secret. */
+  CDP_BASE_RPC_URL?: string;
   ALCHEMY_API_KEY?: string;
   MAIN_WALLET?: string;
   GAS_ALERT_WEBHOOK?: string;
@@ -995,17 +1000,6 @@ ${tierDocs}
 // ── Gas monitor ───────────────────────────────────────────────────────────────
 
 const GAS_LOW_THRESHOLD_WEI = BigInt('2000000000000000');  // 0.002 ETH
-function isAllowedAlchemyRpcUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    return url.protocol === 'https:' && (
-      url.hostname === 'x402.alchemy.com' ||
-      url.hostname.endsWith('.g.alchemy.com')
-    );
-  } catch {
-    return false;
-  }
-}
 
 function cashflowKv(env: Env): { get(key: string): Promise<string | null>; put(key: string, value: string): Promise<void> } | undefined {
   const kv = env.API_KEYS;
@@ -1017,22 +1011,23 @@ function cashflowKv(env: Env): { get(key: string): Promise<string | null>; put(k
 }
 
 function cashflowRpc(env: Env): string {
+  const cdp = env.CDP_BASE_RPC_URL?.trim();
+  if (cdp && isAllowedCdpBaseRpcUrl(cdp)) return cdp;
   const alchemy = env.ALCHEMY_BASE_RPC_URL?.trim();
   if (alchemy && isAllowedAlchemyRpcUrl(alchemy)) return alchemy;
   const fallback = env.BASE_RPC_URL?.trim();
-  if (fallback) return fallback;
+  if (fallback && (isAllowedCdpBaseRpcUrl(fallback) || isAllowedAlchemyRpcUrl(fallback))) return fallback;
   return PUBLIC_BASE_RPC;
 }
 
 function resolveBaseRpcUrl(env: Env): string {
+  const cdp = env.CDP_BASE_RPC_URL?.trim();
+  if (cdp && isAllowedCdpBaseRpcUrl(cdp)) return cdp;
   const rpcUrl = env.ALCHEMY_BASE_RPC_URL?.trim();
-  if (!rpcUrl) {
-    throw new Error('ALCHEMY_BASE_RPC_URL is required for gas monitoring');
-  }
-  if (!isAllowedAlchemyRpcUrl(rpcUrl)) {
-    throw new Error('ALCHEMY_BASE_RPC_URL must be an HTTPS Alchemy RPC URL');
-  }
-  return rpcUrl;
+  if (rpcUrl && isAllowedAlchemyRpcUrl(rpcUrl)) return rpcUrl;
+  const fallback = env.BASE_RPC_URL?.trim();
+  if (fallback && (isAllowedCdpBaseRpcUrl(fallback) || isAllowedAlchemyRpcUrl(fallback))) return fallback;
+  throw new Error('CDP_BASE_RPC_URL or ALCHEMY_BASE_RPC_URL is required for gas monitoring');
 }
 
 async function getEthBalance(address: string, primaryRpc: string): Promise<bigint> {
@@ -1057,14 +1052,17 @@ async function readWalletBalances(rpc: string, env: Env): Promise<{ vault: bigin
 async function checkGasAndAlert(env: Env): Promise<{ vault: string; main: string | null; low: boolean }> {
   const primaryRpc = resolveBaseRpcUrl(env);
   const fallbackRpc = env.BASE_RPC_URL?.trim();
+  const safeFallback = fallbackRpc && (isAllowedCdpBaseRpcUrl(fallbackRpc) || isAllowedAlchemyRpcUrl(fallbackRpc))
+    ? fallbackRpc
+    : undefined;
 
   let bals: { vault: bigint; main: bigint | null };
   try {
     bals = await readWalletBalances(primaryRpc, env);
   } catch (primaryErr) {
-    if (!fallbackRpc) throw primaryErr;
+    if (!safeFallback) throw primaryErr;
     // Alchemy capacity/rate limit hit — degrade to public Base RPC.
-    bals = await readWalletBalances(fallbackRpc, env);
+    bals = await readWalletBalances(safeFallback, env);
   }
 
   const vaultBal = bals.vault;
@@ -1141,12 +1139,32 @@ export default {
       });
     }
 
+    if (pathname === '/hot-fund' && request.method === 'GET') {
+      return new Response(buildHotFundHtml(), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=60',
+          'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+        },
+      });
+    }
+
+    if (pathname === '/api/alchemy/status' && request.method === 'GET') {
+      const report = await probeAlchemySurfaces(
+        env.ALCHEMY_API_KEY,
+        env.VAULT_ADDRESS || env.MAIN_WALLET || '0x60C4499870f115664d7FfD8411b023DBEf3377d9',
+      );
+      return Response.json(report, { status: report.ok ? 200 : 503 });
+    }
+
     if (pathname === '/cashflow' && request.method === 'GET') {
       try {
+        const force = new URL(request.url).searchParams.get('refresh') === '1';
         const { snap, cache } = await resolveCashflowSnapshot(
           cashflowKv(env),
           cashflowRpc(env),
-          (p) => ctx.waitUntil(p),
+          force ? undefined : (p) => ctx.waitUntil(p),
+          force,
         );
         return new Response(buildCashflowHtml(snap, hostname), {
           headers: {
@@ -1168,10 +1186,12 @@ export default {
 
     if (pathname === '/api/cashflow' && request.method === 'GET') {
       try {
+        const force = new URL(request.url).searchParams.get('refresh') === '1';
         const { snap, cache } = await resolveCashflowSnapshot(
           cashflowKv(env),
           cashflowRpc(env),
-          (p) => ctx.waitUntil(p),
+          force ? undefined : (p) => ctx.waitUntil(p),
+          force,
         );
         return Response.json(snap, {
           headers: {
@@ -1337,6 +1357,7 @@ export default {
           { name: 'execute_paid_call', description: 'Execute a paid API call with USDC micropayment' },
           { name: 'read_cashflow', description: `GET https://${hostname}/api/cashflow` },
           { name: 'post_treasury_webhook', description: `POST https://${hostname}/webhooks/treasury` },
+          { name: 'negotiate_x402_offer', description: 'Dynamic high-to-low x402 offer arbitration (proprietary IP of Genesis Conductor/Kovach JV). Maximizes payment per client. Use with ralphloop 10x profit flywheel.' },
         ],
       }, { headers: { 'Cache-Control': 'public, max-age=3600' } });
     }
@@ -1355,7 +1376,7 @@ export default {
 
     if (pathname === '/sitemap.xml') {
       const base = `https://${hostname}`;
-      const urls = ['/', '/health', '/cashflow', '/api/cashflow', '/.well-known/x402', '/.well-known/mcp.json', '/openapi.json', '/llms.txt']
+      const urls = ['/', '/health', '/cashflow', '/hot-fund', '/api/cashflow', '/.well-known/x402', '/.well-known/mcp.json', '/openapi.json', '/llms.txt']
         .map((p) => `  <url><loc>${base}${p}</loc></url>`)
         .join('\n');
       return new Response(

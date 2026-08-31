@@ -752,6 +752,25 @@ describe('x402 Worker cashflow surface', () => {
     await expect(page.response.text()).resolves.toContain('2026-08-15T12:00:00.000Z');
   });
 
+  it('serves the HOT fund page with the Base 100 USDC slice', async () => {
+    const { response } = await dispatch('/hot-fund');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('text/html');
+    expect(response.headers.get('Cross-Origin-Opener-Policy')).toBe('same-origin-allow-popups');
+    const html = await response.text();
+    expect(html).toContain('0x60C4499870f115664d7FfD8411b023DBEf3377d9');
+    expect(html).toContain('100 USDC');
+    expect(html).toContain('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
+  });
+
+  it('reports alchemy surfaces as 503 when the key is missing', async () => {
+    const { response } = await dispatch('/api/alchemy/status');
+    expect(response.status).toBe(503);
+    const body = await responseJson<{ ok: boolean; key_configured: boolean }>(response);
+    expect(body.ok).toBe(false);
+    expect(body.key_configured).toBe(false);
+  });
+
   it('ingests a treasury webhook into the ledger', async () => {
     const kv = memoryKv();
     const { response } = await dispatch('/webhooks/treasury', {
@@ -876,7 +895,7 @@ describe('x402 Worker gas monitoring', () => {
     const missing = await dispatch('/health/gas');
     expect(missing.response.status).toBe(502);
     await expect(responseJson<Record<string, string>>(missing.response)).resolves.toMatchObject({
-      error: 'Error: ALCHEMY_BASE_RPC_URL is required for gas monitoring',
+      error: 'Error: CDP_BASE_RPC_URL or ALCHEMY_BASE_RPC_URL is required for gas monitoring',
     });
 
     const publicRpc = await dispatch('/health/gas', {}, {
@@ -884,7 +903,7 @@ describe('x402 Worker gas monitoring', () => {
     });
     expect(publicRpc.response.status).toBe(502);
     await expect(responseJson<Record<string, string>>(publicRpc.response)).resolves.toMatchObject({
-      error: 'Error: ALCHEMY_BASE_RPC_URL must be an HTTPS Alchemy RPC URL',
+      error: 'Error: CDP_BASE_RPC_URL or ALCHEMY_BASE_RPC_URL is required for gas monitoring',
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });

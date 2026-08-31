@@ -56,6 +56,7 @@ const ENV_KEYS = [
   'ALCHEMY_BASE_RPC_URL',
   'ALCHEMY_API_KEY',
   'BASE_RPC_URL',
+  'CDP_BASE_RPC_URL',
   'MAIN_WALLET',
   'GAS_ALERT_WEBHOOK',
 ] as const;

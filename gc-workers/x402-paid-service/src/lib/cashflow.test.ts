@@ -1,8 +1,12 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   FLEET,
+  SETTLEMENT_USDC_CHAINS,
   SETTLEMENT_WINDOW,
   SNAPSHOT_KEY,
+  USDC_ARB,
+  USDC_BASE,
+  USDC_ETH,
   VENDORS,
   appendLedger,
   buildCashflowHtml,
@@ -10,9 +14,32 @@ import {
   parseDexPoolCount,
   parseDexTokenPrice,
   parseWebhook,
+  refreshSnapshot,
   resolveCashflowSnapshot,
+  sumChainUsdc,
   type CashflowSnapshot,
 } from './cashflow';
+
+describe('settlement multichain USDC', () => {
+  it('lists native USDC on Ethereum, Base, and Arbitrum for the CSW', () => {
+    expect(SETTLEMENT_USDC_CHAINS.map((c) => c.id)).toEqual(['base', 'ethereum', 'arbitrum']);
+    expect(SETTLEMENT_USDC_CHAINS.find((c) => c.id === 'base')?.token).toBe(USDC_BASE);
+    expect(SETTLEMENT_USDC_CHAINS.find((c) => c.id === 'ethereum')?.token).toBe(USDC_ETH);
+    expect(SETTLEMENT_USDC_CHAINS.find((c) => c.id === 'arbitrum')?.token).toBe(USDC_ARB);
+    expect(FLEET.find((w) => w.id === 'settlement')?.address).toBe(
+      '0x937897fe19F675c96a71078820F21cA9bD637180',
+    );
+  });
+
+  it('sums per-chain USDC into working capital', () => {
+    expect(sumChainUsdc([
+      { usdc: 53651.098082 },
+      { usdc: 106863.872238 },
+      { usdc: 54437.421675 },
+    ])).toBeCloseTo(214952.391995, 6);
+    expect(sumChainUsdc([{ usdc: Number.NaN }, { usdc: 1 }])).toBe(1);
+  });
+});
 
 describe('computeRoi', () => {
   it('matches the settlement window identities and negative observed ROI', () => {
@@ -151,6 +178,53 @@ describe('resolveCashflowSnapshot', () => {
     };
   }
 
+  it('keeps last-known Arb USDC when this refresh decodes 0', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('dexpaprika') || url.includes('coinpaprika')) {
+        return Response.json({ quotes: { USD: { price: 1800 } }, summary: { price_usd: 1800 }, results: [] });
+      }
+      const body = String(init?.body ?? '{}');
+      const to = (() => {
+        try { return (JSON.parse(body) as { params?: { to?: string }[] }).params?.[0]?.to; } catch { return undefined; }
+      })();
+      if (to && to.toLowerCase() === USDC_ARB.toLowerCase()) {
+        return Response.json({ result: '0x0' });
+      }
+      if (to && to.toLowerCase() === USDC_BASE.toLowerCase()) {
+        return Response.json({ result: '0x' + (53651_098082).toString(16) });
+      }
+      if (to && to.toLowerCase() === USDC_ETH.toLowerCase()) {
+        return Response.json({ result: '0x' + (106863_872238).toString(16) });
+      }
+      return Response.json({ result: '0x0' });
+    }));
+    const store = new Map<string, string>();
+    const kv = {
+      get: async (k: string) => store.get(k) ?? null,
+      put: async (k: string, v: string) => { store.set(k, v); },
+    };
+    await kv.put(SNAPSHOT_KEY, JSON.stringify({
+      ...seededSnap(),
+      wallets: [{
+        id: 'settlement',
+        role: 's',
+        address: FLEET.find((w) => w.id === 'settlement')!.address,
+        eth: 0,
+        usdc: 214952.391995,
+        usd: 214952.391995,
+        chains: [
+          { id: 'base', name: 'Base', usdc: 1 },
+          { id: 'ethereum', name: 'Ethereum', usdc: 1 },
+          { id: 'arbitrum', name: 'Arbitrum', usdc: 54437.421675 },
+        ],
+      }],
+    }));
+    const snap = await refreshSnapshot(kv, 'https://mainnet.base.org');
+    const settlement = snap.wallets.find((w) => w.id === 'settlement');
+    expect(settlement?.chains?.find((c) => c.id === 'arbitrum')?.usdc).toBeCloseTo(54437.421675, 4);
+  });
+
   it('returns the KV snapshot immediately and refreshes in the background', async () => {
     const kv = memoryKv({ [SNAPSHOT_KEY]: JSON.stringify(seededSnap()) });
     const waitUntil = vi.fn();
@@ -209,5 +283,41 @@ describe('buildCashflowHtml LCP', () => {
     expect(html).toContain('cached');
     expect(html).toContain('wQFLOP');
     expect(html).not.toContain('0x7cb8');
+  });
+
+  it('renders Ethereum / Base / Arbitrum USDC on the settlement card', () => {
+    const html = buildCashflowHtml({
+      generated_at: '2026-08-15T20:00:00.000Z',
+      eth_usd: 1800,
+      wallets: [{
+        id: 'settlement',
+        role: 'Settlement / working capital (CSW, ETH+Base+Arb)',
+        address: '0x937897fe19F675c96a71078820F21cA9bD637180',
+        eth: 0,
+        usdc: 214952.391995,
+        usd: 214952.391995,
+        chains: [
+          { id: 'base', name: 'Base', usdc: 53651.098082 },
+          { id: 'ethereum', name: 'Ethereum', usdc: 106863.872238 },
+          { id: 'arbitrum', name: 'Arbitrum', usdc: 54437.421675 },
+        ],
+      }],
+      priced_usd: 214952.391995,
+      working_capital_usdc: 214952.391995,
+      window: SETTLEMENT_WINDOW,
+      roi: computeRoi(214952.391995),
+      vendors: [...VENDORS],
+      ledger: [],
+      assumptions: ['Working capital sums native USDC on Ethereum + Base + Arbitrum'],
+      freshness: 'live',
+      marks: {
+        eth_source: 'fallback',
+        wqflop: { priced: false, price_usd: null, liquidity_usd: null, pools: 0, note: 'n/a' },
+      },
+    }, 'cashflow.genesisconductor.io');
+    expect(html).toContain('Ethereum USDC');
+    expect(html).toContain('Base USDC');
+    expect(html).toContain('Arbitrum USDC');
+    expect(html).toContain('106,863.87');
   });
 });

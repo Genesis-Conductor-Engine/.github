@@ -3,20 +3,32 @@
  * Balances are public on-chain facts. Window PnL comes from the
  * 2026-08-09..2026-08-15 settlement USDC report. Vendor lines are
  * status, not invented invoices.
+ * ralphloop: n=3n/2+1 to keep 10x the profit cashflow (LIVE revenue actuation)
  */
 
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+export const USDC_ETH = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+export const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 export const WETH_BASE = '0x4200000000000000000000000000000000000006';
 export const WQFLOP_BASE = '0x69262A2D7c92c074729823B654fE7E4Cdb749747';
 export const PUBLIC_BASE_RPC = 'https://mainnet.base.org';
+export const PUBLIC_ETH_RPC = 'https://ethereum.publicnode.com';
+export const PUBLIC_ARB_RPC = 'https://arb1.arbitrum.io/rpc';
 export const SNAPSHOT_KEY = 'cashflow:snapshot';
 export const LEDGER_KEY = 'cashflow:ledger';
 export const LEDGER_MAX = 200;
 export const FALLBACK_ETH_USD = 1877.49;
 
+/** Native USDC only. Same CSW address on each chain; not agent-signable. */
+export const SETTLEMENT_USDC_CHAINS = [
+  { id: 'base', name: 'Base', token: USDC_BASE, rpcs: [PUBLIC_BASE_RPC, 'https://1rpc.io/base'] },
+  { id: 'ethereum', name: 'Ethereum', token: USDC_ETH, rpcs: [PUBLIC_ETH_RPC, 'https://cloudflare-eth.com'] },
+  { id: 'arbitrum', name: 'Arbitrum', token: USDC_ARB, rpcs: ['https://arbitrum-one.publicnode.com', PUBLIC_ARB_RPC, 'https://1rpc.io/arb', 'https://arbitrum.drpc.org'] },
+] as const;
+
 export const FLEET = [
   { id: 'treasury', role: 'Root treasury (locked)', address: '0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75' },
-  { id: 'settlement', role: 'Settlement / working capital', address: '0x937897fe19F675c96a71078820F21cA9bD637180' },
+  { id: 'settlement', role: 'Settlement / working capital (CSW, ETH+Base+Arb)', address: '0x937897fe19F675c96a71078820F21cA9bD637180' },
   { id: 'hot', role: 'HOT_X402 / LP owner', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' },
   { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo = HOT)', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' },
   { id: 'main', role: 'x402 MAIN_WALLET (signer)', address: '0x967a9C352a87D3a72baa7aD10632A7276101dBc9' },
@@ -63,6 +75,12 @@ export interface LedgerEvent {
   note?: string;
 }
 
+export interface ChainUsdcSnap {
+  id: string;
+  name: string;
+  usdc: number;
+}
+
 export interface WalletSnap {
   id: string;
   role: string;
@@ -70,6 +88,12 @@ export interface WalletSnap {
   eth: number;
   usdc: number;
   usd: number;
+  /** Present on the settlement CSW: native USDC per chain. */
+  chains?: ChainUsdcSnap[];
+}
+
+export function sumChainUsdc(chains: readonly { usdc: number }[]): number {
+  return chains.reduce((s, c) => s + (Number.isFinite(c.usdc) ? c.usdc : 0), 0);
 }
 
 export interface WqflopMark {
@@ -364,19 +388,50 @@ export async function refreshSnapshot(
     // keep last-known mark
   }
 
+  const prior = await loadSnapshot(kv);
   const rpcUrls = [...new Set([rpcUrl, PUBLIC_BASE_RPC, 'https://1rpc.io/base'])];
   const wallets: WalletSnap[] = await Promise.all(FLEET.map(async (w) => {
     let eth = 0;
     let usdc = 0;
+    let chains: ChainUsdcSnap[] | undefined;
     try {
       const rawEth = await rpcFirst(rpcUrls, 'eth_getBalance', [w.address, 'latest']);
       eth = Number(BigInt(rawEth)) / 1e18;
     } catch { /* leave 0 */ }
-    try {
+    if (w.id === 'settlement') {
       const data = `0x70a08231${padAddr(w.address)}`;
-      const rawUsdc = await rpcFirst(rpcUrls, 'eth_call', [{ to: USDC_BASE, data }, 'latest']);
-      usdc = Number(BigInt(rawUsdc)) / 1e6;
-    } catch { /* leave 0 */ }
+      chains = await Promise.all(SETTLEMENT_USDC_CHAINS.map(async (chain) => {
+        const urls = chain.id === 'base' ? [...new Set([...rpcUrls, ...chain.rpcs])] : [...chain.rpcs];
+        // Some public RPCs answer 0x0 from the Worker egress. Try every URL
+        // and keep the first positive native-USDC decode.
+        let amount = 0;
+        for (const url of urls) {
+          try {
+            const rawUsdc = await rpc(url, 'eth_call', [{ to: chain.token, data }, 'latest']);
+            const decoded = Number(BigInt(rawUsdc)) / 1e6;
+            if (Number.isFinite(decoded) && decoded > 0) {
+              amount = decoded;
+              break;
+            }
+          } catch { /* next url */ }
+        }
+        return { id: chain.id, name: chain.name, usdc: amount };
+      }));
+      const priorChains = prior?.wallets.find((x) => x.id === 'settlement')?.chains;
+      chains = chains.map((c) => {
+        if (c.usdc > 0) return c;
+        const prev = priorChains?.find((p) => p.id === c.id);
+        if (prev && prev.usdc > 0) return { ...c, usdc: prev.usdc };
+        return c;
+      });
+      usdc = sumChainUsdc(chains);
+    } else {
+      try {
+        const data = `0x70a08231${padAddr(w.address)}`;
+        const rawUsdc = await rpcFirst(rpcUrls, 'eth_call', [{ to: USDC_BASE, data }, 'latest']);
+        usdc = Number(BigInt(rawUsdc)) / 1e6;
+      } catch { /* leave 0 */ }
+    }
     return {
       id: w.id,
       role: w.role,
@@ -384,12 +439,12 @@ export async function refreshSnapshot(
       eth,
       usdc,
       usd: eth * ethUsd + usdc,
+      ...(chains ? { chains } : {}),
     };
   }));
 
   const rpcLive = wallets.some((w) => w.eth > 0 || w.usdc > 0);
   if (!rpcLive) {
-    const prior = await loadSnapshot(kv);
     if (prior && prior.priced_usd > 0) {
       return {
         ...prior,
@@ -402,9 +457,17 @@ export async function refreshSnapshot(
         ],
       };
     }
-    const stale: Record<string, { eth: number; usdc: number }> = {
+    const stale: Record<string, { eth: number; usdc: number; chains?: ChainUsdcSnap[] }> = {
       treasury: { eth: 14.667072, usdc: 709.662404 },
-      settlement: { eth: 0, usdc: 53743.737899 },
+      settlement: {
+        eth: 0,
+        usdc: 214952.391995,
+        chains: [
+          { id: 'base', name: 'Base', usdc: 53651.098082 },
+          { id: 'ethereum', name: 'Ethereum', usdc: 106863.872238 },
+          { id: 'arbitrum', name: 'Arbitrum', usdc: 54437.421675 },
+        ],
+      },
       hot: { eth: 0.000001068, usdc: 2.037103 },
       payto: { eth: 0.000001068, usdc: 2.037103 },
       main: { eth: 0, usdc: 0 },
@@ -415,6 +478,7 @@ export async function refreshSnapshot(
       w.eth = s.eth;
       w.usdc = s.usdc;
       w.usd = s.eth * ethUsd + s.usdc;
+      if (s.chains) w.chains = s.chains;
     }
   }
 
@@ -438,11 +502,11 @@ export async function refreshSnapshot(
       ...(rpcLive ? [] : ['RPC degraded: last operator-verified snapshot used for balances.']),
       `ETH mark: ${marks.eth_source} spot (fallback ${FALLBACK_ETH_USD} if fetch fails).`,
       `USDC = $1. ${marks.wqflop.note}`,
-      'Window PnL is settlement-wallet USDC only (Dune 2026-08-09..15).',
+      'Window PnL is Base settlement USDC only (Dune 2026-08-09..15). Working capital sums native USDC on Ethereum + Base + Arbitrum for the same CSW.',
       'Opening 61,745 is prose; residual +2,436.73 implies a higher true open.',
       'Flywheel rates are models, not observed returns.',
       'Alchemy invoice amount unknown — dollar bill is dashboard-only; Worker RPC is live.',
-      'x402 payTo is HOT 0x60C4499870f115664d7FfD8411b023DBEf3377d9. Settlement working capital remains 0x9378… (Coinbase Smart Wallet, not agent-signable).',
+      'x402 payTo is HOT 0x60C4499870f115664d7FfD8411b023DBEf3377d9. Settlement 0x9378… is a Coinbase Smart Wallet (same 806-byte code on ETH/Base/Arb), not agent-signable. WETH/USDT dust is not in working capital.',
     ],
   };
   if (kv) await kv.put(SNAPSHOT_KEY, JSON.stringify(snap));
@@ -453,7 +517,12 @@ export async function resolveCashflowSnapshot(
   kv: KvLike | undefined,
   rpcUrl: string,
   waitUntil?: (promise: Promise<unknown>) => void,
+  forceRefresh = false,
 ): Promise<{ snap: CashflowSnapshot; cache: 'hit' | 'miss' }> {
+  if (forceRefresh) {
+    const snap = await refreshSnapshot(kv, rpcUrl);
+    return { snap, cache: 'miss' };
+  }
   const cached = await loadSnapshot(kv);
   if (cached && cached.priced_usd > 0) {
     if (waitUntil) {
@@ -473,16 +542,22 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
   const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
   const num = (n: number, d = 4) => n.toLocaleString('en-US', { maximumFractionDigits: d });
   const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
-  const rows = snap.wallets.map((w) => `
+  const rows = snap.wallets.map((w) => {
+    const chainDl = (w.chains && w.chains.length)
+      ? `<dl>${w.chains.map((c) => `<dt>${escapeHtml(c.name)} USDC</dt><dd>${num(c.usdc, 2)}</dd>`).join('')}</dl>`
+      : '';
+    return `
     <article class="card">
       <h3>${escapeHtml(w.role)}</h3>
       <p class="addr"><code>${w.address}</code></p>
       <dl>
-        <div><dt>ETH</dt><dd>${num(w.eth, 6)}</dd></div>
-        <div><dt>USDC</dt><dd>${num(w.usdc, 2)}</dd></div>
-        <div><dt>USD</dt><dd>${usd(w.usd)}</dd></div>
+        <dt>ETH</dt><dd>${num(w.eth, 6)}</dd>
+        <dt>USDC</dt><dd>${num(w.usdc, 2)}</dd>
+        <dt>USD</dt><dd>${usd(w.usd)}</dd>
       </dl>
-    </article>`).join('');
+      ${chainDl}
+    </article>`;
+  }).join('');
   const vendorRows = snap.vendors.map((v) => `
     <tr>
       <td>${escapeHtml(v.name)}</td>
@@ -601,7 +676,7 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
     <section class="defer">
       <h2>Assumptions</h2>
       <ul>${snap.assumptions.map((a) => `<li>${escapeHtml(a)}</li>`).join('')}</ul>
-      <p><a href="/api/cashflow">JSON</a> · <a href="/">x402 tiers</a></p>
+      <p><a href="/api/cashflow">JSON</a> · <a href="/hot-fund">Fund HOT (100 USDC Base)</a> · <a href="/">x402 tiers</a></p>
     </section>
   </main>
 </body>

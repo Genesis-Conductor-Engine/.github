@@ -66,6 +66,8 @@ SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID = ""
 #   SHOPIFY_SHOP_DOMAIN   e.g. "my-store.myshopify.com" (NOT the storefront domain)
 #   REVENUE_TOKEN         bearer token gating GET /health/revenue
 # Gas monitoring — checked every 6h by cron
-# BASE_RPC_URL is a secret, not a var — set it with:
+# BASE_RPC_URL / CDP_BASE_RPC_URL are secrets, not vars — set with:
 #   wrangler secret put BASE_RPC_URL
+#   wrangler secret put CDP_BASE_RPC_URL
+# CDP Node Base: https://api.developer.coinbase.com/rpc/v1/base/<token> (never commit the token)
 MAIN_WALLET = "0x967a9C352a87D3a72baa7aD10632A7276101dBc9"  # rotated 2026-08-01; old key compromised, see LAUNCH_PLAN.md
