@@ -1,0 +1,31 @@
+name = "intent-surface"
+main = "src/index.ts"
+compatibility_date = "2026-07-21"
+account_id = "04c59c95ce8d0a0be98099b7f7e39d18"
+workers_dev = true
+
+# Static overlay (web-intent-inference.html)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# Keep .html paths as-is (default auto-trailing-slash rewrites break explicit filenames)
+html_handling = "none"
+not_found_handling = "none"
+run_worker_first = ["/api/*", "/health", "/"]
+
+# Workers AI — Kimi on Cloudflare (optional at runtime if binding present)
+[ai]
+binding = "AI"
+
+[vars]
+DEFAULT_SPACE = "1RKZzzEXjXmKB"
+KIMI_MODEL = "@cf/moonshotai/kimi-k2.7-code"
+# Optional: tunnel/public origin for live THRML CSID daemon
+# CSID_ORIGIN = "https://caps-mirror-bosnia-leadership.trycloudflare.com"
+
+# Custom domain (requires zone on this account + wrangler auth)
+# DISABLED: custom domain conflicts with externally managed DNS (CF 100117).
+# Prefer Worker URL intent-surface.iholt.workers.dev OR pure DNS CNAME to workers.dev.
+# [[routes]]
+# pattern = "intent.genesisconductor.io"
+# custom_domain = true

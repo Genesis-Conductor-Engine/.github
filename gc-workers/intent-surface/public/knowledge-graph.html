@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Knowledge-node coins · Genesis Conductor</title>
+  <meta name="description" content="Genesis Conductor knowledge-node coins and partner registry graph." />
+  <style>
+    :root {
+      --bg: #05060c; --fg: #e8ecff; --muted: #8b93b8; --accent: #7c5cff;
+      --ok: #3dd68c; --line: rgba(124, 92, 255, 0.35);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: "Inter", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--fg); font-family: var(--sans);
+      background: radial-gradient(1000px 500px at 15% -10%, #1a1340 0%, var(--bg) 55%);
+      padding: 28px 32px 48px;
+    }
+    h1 { font-size: 28px; letter-spacing: -0.03em; margin: 0 0 8px; }
+    .sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+    .sub a { color: #a99bff; }
+    table {
+      width: 100%; border-collapse: collapse; margin: 16px 0 28px;
+      font-size: 13px; font-family: var(--mono);
+    }
+    th, td {
+      text-align: left; padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    th { color: var(--muted); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+    .badge {
+      display: inline-block; padding: 3px 8px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--ok); font-size: 11px;
+    }
+    .card {
+      border: 1px solid var(--line); border-radius: 16px;
+      background: rgba(10,12,24,0.72); padding: 18px 20px; margin-bottom: 18px;
+    }
+    .label { color: var(--muted); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 10px; }
+    pre {
+      font-family: var(--mono); font-size: 12px; overflow: auto;
+      color: #c5cbe8; margin: 0; white-space: pre-wrap;
+    }
+    footer { color: var(--muted); font-size: 11px; font-family: var(--mono); margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Knowledge-node coins</h1>
+  <p class="sub">
+    Genesis Conductor federated graph ·
+    <a href="/api/knowledge-nodes">/api/knowledge-nodes</a> ·
+    <a href="https://ouroboros.genesisconductor.io">ouroboros</a> ·
+    <a href="/web-intent-inference.html">intent overlay</a>
+  </p>
+
+  <div class="card">
+    <div class="label">Coins from this graph</div>
+    <table>
+      <thead><tr><th>Coin</th><th>Type</th></tr></thead>
+      <tbody id="coins"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="label">Partner registry</div>
+    <table>
+      <thead><tr><th>Partner</th><th>URL</th><th>Role</th><th>Since</th><th>Public</th></tr></thead>
+      <tbody id="partners"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="label">JSON index</div>
+    <pre id="raw">loading…</pre>
+  </div>
+
+  <footer>Kovach Enterprises · Genesis Conductor Engine · NSF CAIG #2530747 · dry knowledge deploy</footer>
+
+  <script>
+    (function () {
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+      function pub(v) {
+        if (v === true) return '<span class="badge">Y</span>';
+        if (v === false) return "N";
+        if (v == null) return "Y/N";
+        return esc(v);
+      }
+      function link(url, label) {
+        if (!url) return "—";
+        return '<a href="' + esc(url) + '" style="color:#a99bff" target="_blank" rel="noreferrer">' +
+          esc(label || url) + "</a>";
+      }
+      fetch("/api/knowledge-nodes", { cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("api"); return r.json(); })
+        .then(function (d) {
+          document.getElementById("raw").textContent = JSON.stringify(d, null, 2);
+          document.getElementById("coins").innerHTML = (d.coins || [])
+            .map(function (c) {
+              return "<tr><td>" + esc(c.name) + "</td><td>" + esc(c.label || c.type) + "</td></tr>";
+            })
+            .join("");
+          document.getElementById("partners").innerHTML = (d.partners || [])
+            .map(function (p) {
+              return "<tr><td>" + esc(p.name) + "</td><td>" + link(p.url, p.url) +
+                "</td><td>" + esc(p.role || "—") + "</td><td>" + esc(p.since || "—") +
+                "</td><td>" + pub(p.public) + "</td></tr>";
+            })
+            .join("");
+        })
+        .catch(function () {
+          document.getElementById("raw").textContent =
+            "API unavailable — open /api/knowledge-nodes or serve intent-surface.";
+        });
+    })();
+  </script>
+</body>
+</html>

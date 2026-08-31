@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Web Intent Inference · Live Overlay</title>
+  <style>
+    :root {
+      --bg: #05060c;
+      --fg: #e8ecff;
+      --muted: #8b93b8;
+      --accent: #7c5cff;
+      --ok: #3dd68c;
+      --warn: #ffc857;
+      --line: rgba(124, 92, 255, 0.35);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: "Inter", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: radial-gradient(1200px 600px at 20% -10%, #1a1340 0%, var(--bg) 55%);
+      color: var(--fg);
+      font-family: var(--sans);
+      overflow: hidden;
+    }
+    body { display: grid; grid-template-rows: auto auto 1fr auto; padding: 20px 28px; gap: 14px; }
+    header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+    h1 { font-size: 26px; margin: 0; letter-spacing: -0.03em; }
+    .badge {
+      font: 600 12px/1 var(--mono);
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--ok);
+      background: rgba(61, 214, 140, 0.08);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+    /* ── Space control bar (easy entry) ── */
+    .control {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(10, 12, 24, 0.85);
+      padding: 12px 14px;
+    }
+    .control label {
+      position: absolute;
+      width: 1px; height: 1px;
+      overflow: hidden; clip: rect(0 0 0 0);
+    }
+    .control input {
+      width: 100%;
+      font: 500 14px/1.3 var(--mono);
+      color: var(--fg);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      outline: none;
+    }
+    .control input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,92,255,0.2); }
+    .control input::placeholder { color: var(--muted); }
+    .control button, .control a.btn {
+      font: 600 13px/1 var(--sans);
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      cursor: pointer;
+      text-decoration: none;
+      color: var(--fg);
+      background: rgba(124, 92, 255, 0.25);
+      white-space: nowrap;
+    }
+    .control button.primary { background: linear-gradient(135deg, #5b3dff, #7c5cff); border-color: transparent; }
+    .control button.ghost, .control a.btn.ghost { background: transparent; color: var(--muted); }
+    .control .hint {
+      grid-column: 1 / -1;
+      font: 500 11px/1.4 var(--mono);
+      color: var(--muted);
+    }
+    .control .hint code { color: var(--warn); }
+
+    main {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 14px;
+      min-height: 0;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(10, 12, 24, 0.72);
+      backdrop-filter: blur(12px);
+      padding: 18px 20px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 0;
+    }
+    .label { color: var(--muted); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .value { font-family: var(--mono); font-size: 13px; word-break: break-all; line-height: 1.45; }
+    .value a { color: #a99bff; text-decoration: none; }
+    .intent-name {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      color: var(--accent);
+      text-shadow: 0 0 40px rgba(124, 92, 255, 0.45);
+    }
+    .space-id-display {
+      font: 700 20px/1.2 var(--mono);
+      color: var(--ok);
+      letter-spacing: 0.02em;
+    }
+    .log {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      color: #c5cbe8;
+      overflow: hidden;
+      white-space: pre-wrap;
+    }
+    .log .line { opacity: 0; animation: fadein 0.35s forwards; }
+    @keyframes fadein { to { opacity: 1; } }
+    footer {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+    .meter {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+    .meter > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #5b3dff, #3dd68c);
+      transition: width 0.4s ease;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      font: 500 11px/1 var(--mono);
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--warn);
+    }
+    .artiq-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .artiq-meta.six { grid-template-columns: repeat(3, 1fr); }
+    .slack-pos b { color: var(--ok) !important; }
+    .slack-neg b { color: #ff6b8a !important; }
+    .artiq-meta div {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.03);
+    }
+    .artiq-meta span { display: block; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+    .artiq-meta b { color: var(--ok); font-weight: 600; }
+    .timeline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      max-height: 72px;
+      overflow: hidden;
+    }
+    .timeline i {
+      display: inline-block;
+      font-style: normal;
+      font: 500 9px/1 var(--mono);
+      padding: 5px 7px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      color: #c5cbe8;
+      background: rgba(124, 92, 255, 0.12);
+    }
+    .timeline i.ttl { color: var(--warn); border-color: rgba(255,200,87,0.35); }
+    .timeline i.csid { color: var(--ok); }
+    .timeline i.marker { color: #a99bff; }
+    /* OBS / stream: hide control bar when ?hud=0 or ?clean=1 */
+    body.clean .control { display: none; }
+    body.clean { grid-template-rows: auto 1fr auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Web Intent Inference</h1>
+    <div class="badge" id="liveBadge">● LIVE ENCODER</div>
+  </header>
+
+  <form class="control" id="spaceForm" autocomplete="off">
+    <label for="spaceInput">Space ID or URL</label>
+    <input
+      id="spaceInput"
+      name="space"
+      type="text"
+      spellcheck="false"
+      placeholder="Paste Space ID or https://x.com/i/spaces/… or twitter.com/i/spaces/…"
+    />
+    <button type="submit" class="primary" id="applyBtn">Analyze</button>
+    <a class="btn ghost" id="openSpace" href="#" target="_blank" rel="noreferrer">Open Space</a>
+    <a class="btn ghost" id="openIntent" href="#" target="_blank" rel="noreferrer">Share Intent</a>
+    <div class="hint">
+      Easy entry · RTMP/OBS: keep this tab as Browser Source · change Space anytime ·
+      query <code>?space=ID</code> · clean HUD <code>?hud=0</code> ·
+      CLI: <code>./scripts/set-space.sh &lt;id-or-url&gt;</code>
+    </div>
+  </form>
+
+  <main>
+    <section class="card">
+      <div class="label">Space under analysis</div>
+      <div class="space-id-display" id="spaceIdDisplay">—</div>
+      <div class="label">Primary intent</div>
+      <div class="intent-name" id="intentName">JOIN_LISTEN</div>
+      <div class="label">Space URL</div>
+      <div class="value" id="spaceUrl"></div>
+      <div class="label">Share intent (compose)</div>
+      <div class="value" id="intentUrl"></div>
+      <div class="label">Confidence</div>
+      <div class="meter"><i id="confBar"></i></div>
+      <div class="label">CSID · contextual semantic interference diffusion</div>
+      <div class="value" id="csidLine">waiting for thrml daemon…</div>
+      <div class="meter"><i id="csidBar"></i></div>
+      <div class="label">ARTIQ RTIO · kernel timeline <a href="https://m-labs.hk/artiq/manual/introduction.html" target="_blank" rel="noreferrer" style="color:#a99bff;font-size:10px;text-transform:none;letter-spacing:0">manual</a>
+        · <a href="https://white-rabbit.web.cern.ch/" target="_blank" rel="noreferrer" style="color:#a99bff;font-size:10px;text-transform:none;letter-spacing:0">White Rabbit</a></div>
+      <div class="artiq-meta six" id="artiqMeta">
+        <div><span>now_μ</span><b id="artiqNow">—</b></div>
+        <div><span>rtio_counter_μ</span><b id="artiqWall">—</b></div>
+        <div id="artiqSlackCell"><span>slack_μ</span><b id="artiqSlack">—</b></div>
+        <div><span>events</span><b id="artiqEvents">—</b></div>
+        <div><span>Ī</span><b id="artiqI">—</b></div>
+        <div><span>underflow</span><b id="artiqUf">—</b></div>
+      </div>
+      <div class="artiq-meta" id="wrMeta" style="margin-top:6px">
+        <div><span>WR lock</span><b id="wrLock">—</b></div>
+        <div><span>offset_ns</span><b id="wrOffset">—</b></div>
+        <div><span>delay_ns</span><b id="wrDelay">—</b></div>
+      </div>
+      <div class="artiq-meta" style="margin-top:6px">
+        <div><span>evolve Q</span><b id="evolveQ">—</b></div>
+        <div><span>goal</span><b id="evolveGoal">—</b></div>
+        <div><span>gen</span><b id="evolveGen">—</b></div>
+      </div>
+      <div class="timeline" id="artiqTimeline" title="RTIO event strip"></div>
+      <div class="chips" id="chips"></div>
+    </section>
+    <section class="card">
+      <div class="label">Inference stream</div>
+      <div class="log" id="log"></div>
+    </section>
+  </main>
+  <footer>
+    <span id="clock"></span>
+    <span>Genesis Conductor · ARTIQ RTIO · CSID · no secrets</span>
+  </footer>
+  <script>
+    (function () {
+      var DEFAULT_SPACE = "1RKZzzEXjXmKB";
+      var STORAGE_KEY = "gc.web_intent.space_id";
+      var STATE_POLL_MS = 2000;
+      var cycleTimers = [];
+      var cycleInterval = null;
+
+      var params = new URLSearchParams(location.search);
+      if (params.get("hud") === "0" || params.get("clean") === "1") {
+        document.body.classList.add("clean");
+      }
+
+      function parseSpaceInput(raw) {
+        if (!raw) return null;
+        var s = String(raw).trim();
+        // Full URL: twitter.com or x.com /i/spaces/ID[/…]
+        var m = s.match(/(?:x|twitter)\.com\/i\/spaces\/([A-Za-z0-9]+)/i);
+        if (m) return m[1];
+        // Bare ID (X space ids are alphanumeric, often start with 1)
+        m = s.match(/^([A-Za-z0-9]{8,})$/);
+        if (m) return m[1];
+        // Query fragment space=ID
+        m = s.match(/[?&]space=([A-Za-z0-9]+)/i);
+        if (m) return m[1];
+        return null;
+      }
+
+      function resolveInitialSpace() {
+        var fromQuery = params.get("space");
+        if (fromQuery && parseSpaceInput(fromQuery)) return parseSpaceInput(fromQuery);
+        try {
+          var stored = localStorage.getItem(STORAGE_KEY);
+          if (stored && parseSpaceInput(stored)) return parseSpaceInput(stored);
+        } catch (e) {}
+        return DEFAULT_SPACE;
+      }
+
+      var state = {
+        spaceId: resolveInitialSpace(),
+        primary: "JOIN_LISTEN",
+      };
+
+      var els = {
+        input: document.getElementById("spaceInput"),
+        form: document.getElementById("spaceForm"),
+        spaceIdDisplay: document.getElementById("spaceIdDisplay"),
+        spaceUrl: document.getElementById("spaceUrl"),
+        intentUrl: document.getElementById("intentUrl"),
+        openSpace: document.getElementById("openSpace"),
+        openIntent: document.getElementById("openIntent"),
+        intentName: document.getElementById("intentName"),
+        confBar: document.getElementById("confBar"),
+        csidLine: document.getElementById("csidLine"),
+        csidBar: document.getElementById("csidBar"),
+        artiqNow: document.getElementById("artiqNow"),
+        artiqWall: document.getElementById("artiqWall"),
+        artiqSlack: document.getElementById("artiqSlack"),
+        artiqSlackCell: document.getElementById("artiqSlackCell"),
+        artiqEvents: document.getElementById("artiqEvents"),
+        artiqI: document.getElementById("artiqI"),
+        artiqUf: document.getElementById("artiqUf"),
+        wrLock: document.getElementById("wrLock"),
+        wrOffset: document.getElementById("wrOffset"),
+        wrDelay: document.getElementById("wrDelay"),
+        evolveQ: document.getElementById("evolveQ"),
+        evolveGoal: document.getElementById("evolveGoal"),
+        evolveGen: document.getElementById("evolveGen"),
+        artiqTimeline: document.getElementById("artiqTimeline"),
+        chips: document.getElementById("chips"),
+        log: document.getElementById("log"),
+        clock: document.getElementById("clock"),
+      };
+
+      function spaceUrl(id) {
+        return "https://x.com/i/spaces/" + id;
+      }
+      function intentUrl(id) {
+        return (
+          "https://x.com/intent/post?" +
+          new URLSearchParams({
+            text: "Live on X Spaces — web-intent inference stream",
+            url: spaceUrl(id),
+          }).toString()
+        );
+      }
+
+      function addLine(text) {
+        var ts = new Date().toISOString().slice(11, 19);
+        var div = document.createElement("div");
+        div.className = "line";
+        div.textContent = "[" + ts + "] " + text;
+        els.log.prepend(div);
+        while (els.log.children.length > 20) els.log.removeChild(els.log.lastChild);
+      }
+
+      function clearCycle() {
+        cycleTimers.forEach(function (t) { clearTimeout(t); });
+        cycleTimers = [];
+        if (cycleInterval) {
+          clearInterval(cycleInterval);
+          cycleInterval = null;
+        }
+      }
+
+      function stepsFor(id) {
+        return [
+          { t: 0, intent: "RESOLVE_URL", conf: 0.42, msg: "parse space id " + id },
+          { t: 1200, intent: "DETECT_PEEK", conf: 0.55, msg: "guest path → /peek redirect observed" },
+          { t: 2400, intent: "JOIN_LISTEN", conf: 0.78, msg: "web surface = listen-only; speak is app-side" },
+          { t: 3800, intent: "COMPOSE_SHARE", conf: 0.86, msg: "compose web intent prefilled with space url" },
+          { t: 5200, intent: "JOIN_LISTEN", conf: 0.91, msg: "primary operator action: open space in browser session" },
+          { t: 7000, intent: "BROADCAST_OVERLAY", conf: 0.94, msg: "encode inference frames for RTMP (ffmpeg → rtmps)" },
+          { t: 9000, intent: "JOIN_LISTEN", conf: 0.97, msg: "loop: re-score intent for space " + id },
+        ];
+      }
+
+      function applyStep(s) {
+        els.intentName.textContent = s.intent;
+        state.primary = s.intent;
+        els.confBar.style.width = Math.round(s.conf * 100) + "%";
+        addLine(s.msg + " · conf=" + s.conf.toFixed(2));
+        window.__WEB_INTENT_INFERENCE__ = exportState();
+      }
+
+      function runCycle() {
+        var id = state.spaceId;
+        stepsFor(id).forEach(function (s) {
+          cycleTimers.push(setTimeout(function () { applyStep(s); }, s.t));
+        });
+      }
+
+      function exportState() {
+        return {
+          spaceId: state.spaceId,
+          spaceUrl: spaceUrl(state.spaceId),
+          intentUrl: intentUrl(state.spaceId),
+          primary: state.primary,
+        };
+      }
+
+      function renderStatic() {
+        var id = state.spaceId;
+        var su = spaceUrl(id);
+        var iu = intentUrl(id);
+        els.spaceIdDisplay.textContent = id;
+        els.input.value = id;
+        els.spaceUrl.innerHTML = '<a href="' + su + '" target="_blank" rel="noreferrer">' + su + "</a>";
+        els.intentUrl.innerHTML = '<a href="' + iu + '" target="_blank" rel="noreferrer">' + iu + "</a>";
+        els.openSpace.href = su;
+        els.openIntent.href = iu;
+        els.chips.innerHTML = [
+          "scheme=https",
+          "host=x.com",
+          "path=/i/spaces/*",
+          "space=" + id,
+          "intent=post|tweet",
+          "rtmp=encoder",
+        ]
+          .map(function (c) {
+            return '<span class="chip">' + c + "</span>";
+          })
+          .join("");
+        window.__WEB_INTENT_INFERENCE__ = exportState();
+      }
+
+      function setSpace(id, opts) {
+        opts = opts || {};
+        id = parseSpaceInput(id);
+        if (!id) {
+          addLine("ERROR invalid space — paste ID or full x.com/i/spaces/… URL");
+          els.input.focus();
+          return false;
+        }
+        var prev = state.spaceId;
+        state.spaceId = id;
+        try {
+          localStorage.setItem(STORAGE_KEY, id);
+        } catch (e) {}
+        // Update URL without reload (OBS Browser Source stays up)
+        var next = new URL(location.href);
+        next.searchParams.set("space", id);
+        if (opts.clean) next.searchParams.set("hud", "0");
+        history.replaceState({}, "", next.pathname + "?" + next.searchParams.toString());
+        renderStatic();
+        clearCycle();
+        addLine(
+          prev === id
+            ? "re-analyze space " + id
+            : "SWITCH space " + prev + " → " + id + " (overlay + RTMP textfile consumers)"
+        );
+        runCycle();
+        cycleInterval = setInterval(runCycle, 12000);
+        // Notify optional control server / RTMP sidecar
+        postSpaceToControl(id);
+        return true;
+      }
+
+      function postSpaceToControl(id) {
+        // Best-effort: control API on same origin if serving via control server
+        fetch("/api/space", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ space: id, spaceId: id }),
+        }).catch(function () {
+          // static server has no API — set-space.sh / state file is the RTMP path
+        });
+      }
+
+      function pollControlState() {
+        fetch("/api/space", { cache: "no-store" })
+          .then(function (r) {
+            if (!r.ok) throw new Error("no api");
+            return r.json();
+          })
+          .then(function (data) {
+            var id = parseSpaceInput(data.spaceId || data.space || "");
+            if (id && id !== state.spaceId) {
+              addLine("control API → space " + id);
+              setSpace(id);
+            }
+          })
+          .catch(function () {});
+      }
+
+      function pollCsid() {
+        // Prefer same-origin proxy, then direct daemon :5192
+        var urls = ["/api/csid", "http://127.0.0.1:5192/api/csid"];
+        var i = 0;
+        function tryNext() {
+          if (i >= urls.length) return;
+          var u = urls[i++];
+          fetch(u, { cache: "no-store" })
+            .then(function (r) {
+              if (!r.ok) throw new Error("csid fail");
+              return r.json();
+            })
+            .then(function (d) {
+              if (!d || !d.spaceId) return;
+              var line =
+                "CSID " +
+                (d.backend || "?") +
+                "  M=" +
+                Number(d.meanMagnetization || 0).toFixed(3) +
+                "  I=" +
+                Number(d.interference || 0).toFixed(3) +
+                "  D=" +
+                Number(d.diffusionNorm || 0).toFixed(3) +
+                "  S=" +
+                Number(d.semanticEntropy || 0).toFixed(3) +
+                "  " +
+                (d.kelvin || "?") +
+                "K";
+              els.csidLine.textContent = line;
+              var conf = Math.min(
+                1,
+                0.35 +
+                  Math.abs(Number(d.meanMagnetization) || 0) * 0.35 +
+                  Number(d.interference || 0) * 0.3
+              );
+              els.csidBar.style.width = Math.round(conf * 100) + "%";
+              if (d.spaceId && d.spaceId !== state.spaceId) {
+                // keep CSID context aligned when space changes elsewhere
+              }
+              window.__CSID__ = d;
+            })
+            .catch(function () {
+              tryNext();
+            });
+        }
+        tryNext();
+      }
+
+      function renderArtiq(d) {
+        if (!d || !d.kernel) return;
+        var k = d.kernel;
+        els.artiqNow.textContent = String(k.now_mu != null ? k.now_mu : "—");
+        els.artiqWall.textContent = String(
+          k.rtio_counter_mu != null ? k.rtio_counter_mu : "—"
+        );
+        var slack = k.slack_mu;
+        els.artiqSlack.textContent = String(slack != null ? slack : "—");
+        if (els.artiqSlackCell) {
+          els.artiqSlackCell.classList.remove("slack-pos", "slack-neg");
+          if (k.positive_slack === true || (slack != null && slack >= 0)) {
+            els.artiqSlackCell.classList.add("slack-pos");
+          } else if (slack != null) {
+            els.artiqSlackCell.classList.add("slack-neg");
+          }
+        }
+        els.artiqEvents.textContent = String(
+          k.event_count != null ? k.event_count : "—"
+        );
+        var mi =
+          d.aggregate && d.aggregate.meanInterference != null
+            ? Number(d.aggregate.meanInterference).toFixed(3)
+            : "—";
+        els.artiqI.textContent = mi;
+        var uf =
+          (d.aggregate && d.aggregate.underflowsCaught) ||
+          k.underflow_count ||
+          0;
+        els.artiqUf.textContent = String(uf);
+        var wr = d.whiteRabbit || {};
+        if (els.wrLock) {
+          els.wrLock.textContent = wr.locked ? "LOCKED" : wr.error ? "ERR" : "—";
+          els.wrLock.style.color = wr.locked ? "var(--ok)" : "var(--warn)";
+        }
+        if (els.wrOffset) {
+          els.wrOffset.textContent =
+            wr.offset_mu != null ? String(wr.offset_mu) : "—";
+        }
+        if (els.wrDelay) {
+          els.wrDelay.textContent =
+            wr.delay_mu != null ? String(wr.delay_mu) : "—";
+        }
+        var events = (k.events || []).slice(0, 22);
+        els.artiqTimeline.innerHTML = events
+          .map(function (ev) {
+            var kind = ev.kind || "?";
+            var cls =
+              kind.indexOf("ttl") === 0
+                ? "ttl"
+                : kind === "csid_step"
+                  ? "csid"
+                  : kind === "marker" || kind.indexOf("gate") === 0
+                    ? "marker"
+                    : kind === "count"
+                      ? "csid"
+                      : "";
+            var us =
+              ev.timestamp_us != null
+                ? Number(ev.timestamp_us).toFixed(0)
+                : "?";
+            return (
+              "<i class=\"" +
+              cls +
+              "\" title=\"" +
+              (ev.channel || "") +
+              " @ " +
+              us +
+              "μs\">" +
+              kind +
+              "</i>"
+            );
+          })
+          .join("");
+        window.__ARTIQ__ = d;
+      }
+
+      function pollArtiqKernel() {
+        var sid = state.spaceId || DEFAULT_SPACE;
+        var qs =
+          "?space=" +
+          encodeURIComponent(sid) +
+          "&steps=3&stepDelayUs=100&pulseUs=40";
+        var urls = [
+          "/api/artiq/kernel" + qs,
+          "http://127.0.0.1:5192/api/artiq/kernel" + qs,
+        ];
+        var i = 0;
+        function tryNext() {
+          if (i >= urls.length) return;
+          var u = urls[i++];
+          fetch(u, { cache: "no-store" })
+            .then(function (r) {
+              if (!r.ok) throw new Error("artiq fail");
+              return r.json();
+            })
+            .then(function (d) {
+              if (!d || !d.kernel) throw new Error("no kernel");
+              renderArtiq(d);
+              addLine(
+                "ARTIQ kernel " +
+                  (d.kernel.name || "") +
+                  " events=" +
+                  d.kernel.event_count +
+                  " now_μ=" +
+                  d.kernel.now_mu +
+                  " slack_μ=" +
+                  d.kernel.slack_mu
+              );
+            })
+            .catch(function () {
+              tryNext();
+            });
+        }
+        tryNext();
+      }
+
+      els.form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        setSpace(els.input.value);
+      });
+
+      // Keyboard: Cmd/Ctrl+K focuses space input
+      document.addEventListener("keydown", function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+          e.preventDefault();
+          els.input.focus();
+          els.input.select();
+        }
+      });
+
+      // Init
+      renderStatic();
+      runCycle();
+      cycleInterval = setInterval(runCycle, 12000);
+      setInterval(function () {
+        els.clock.textContent = new Date().toISOString();
+      }, 1000);
+      setInterval(pollControlState, STATE_POLL_MS);
+      pollCsid();
+      setInterval(pollCsid, 2500);
+      function pollWr() {
+        var urls = ["/api/wr/sync", "http://127.0.0.1:5192/api/wr/sync"];
+        var i = 0;
+        function tryNext() {
+          if (i >= urls.length) return;
+          var u = urls[i++];
+          fetch(u, { cache: "no-store" })
+            .then(function (r) {
+              if (!r.ok) throw new Error("wr fail");
+              return r.json();
+            })
+            .then(function (d) {
+              window.__WR__ = d;
+              var edge = (d.nodes && d.nodes["node.edge"]) || (d.nodes && d.nodes["node.csid"]);
+              if (edge && els.wrLock) {
+                els.wrLock.textContent = edge.locked ? "LOCKED" : "—";
+                els.wrLock.style.color = edge.locked ? "var(--ok)" : "var(--warn)";
+                els.wrOffset.textContent = String(edge.offset_mu != null ? edge.offset_mu : "—");
+                els.wrDelay.textContent = String(edge.last_delay_mu != null ? edge.last_delay_mu : "—");
+              }
+              addLine(
+                "WR sync rounds=" +
+                  (d.sync_rounds || 0) +
+                  " gm=" +
+                  ((d.grandmaster && d.grandmaster.name) || d.grandmaster || "?")
+              );
+            })
+            .catch(function () {
+              tryNext();
+            });
+        }
+        tryNext();
+      }
+
+      function pollEvolve() {
+        var sid = state.spaceId || DEFAULT_SPACE;
+        var qs = "?space=" + encodeURIComponent(sid) + "&steps=2";
+        var urls = ["/api/evolve" + qs, "http://127.0.0.1:5192/api/evolve" + qs];
+        var i = 0;
+        function tryNext() {
+          if (i >= urls.length) return;
+          var u = urls[i++];
+          fetch(u, { cache: "no-store" })
+            .then(function (r) {
+              if (!r.ok) throw new Error("evolve fail");
+              return r.json();
+            })
+            .then(function (d) {
+              if (!d || !d.primary) throw new Error("no evolve");
+              window.__EVOLVE__ = d;
+              if (els.evolveQ)
+                els.evolveQ.textContent =
+                  d.quality != null ? Number(d.quality).toFixed(3) : "—";
+              if (els.evolveGoal)
+                els.evolveGoal.textContent = d.goal_status || "—";
+              if (els.evolveGen)
+                els.evolveGen.textContent =
+                  (d.generation && d.generation.latency_ms != null
+                    ? Math.round(d.generation.latency_ms) + "ms"
+                    : "—");
+              if (d.whiteRabbit && els.wrLock) {
+                els.wrLock.textContent = d.whiteRabbit.locked ? "LOCKED" : "—";
+                els.wrLock.style.color = d.whiteRabbit.locked
+                  ? "var(--ok)"
+                  : "var(--warn)";
+                els.wrOffset.textContent = String(
+                  d.whiteRabbit.offset_mu != null ? d.whiteRabbit.offset_mu : "—"
+                );
+                els.wrDelay.textContent = String(
+                  d.whiteRabbit.delay_mu != null ? d.whiteRabbit.delay_mu : "—"
+                );
+              }
+              addLine(
+                "EVOLVE " +
+                  (d.goal_status || "?") +
+                  " Q=" +
+                  (d.quality != null ? Number(d.quality).toFixed(3) : "?") +
+                  " dry=" +
+                  d.dry_run
+              );
+            })
+            .catch(function () {
+              tryNext();
+            });
+        }
+        tryNext();
+      }
+
+      pollArtiqKernel();
+      setInterval(pollArtiqKernel, 8000);
+      pollWr();
+      setInterval(pollWr, 12000);
+      pollEvolve();
+      setInterval(pollEvolve, 15000);
+      addLine("ready — edit Space above or press ⌘K / Ctrl+K");
+      addLine("CSID daemon poll → /api/csid or :5192 (thrml interference diffusion)");
+      addLine("ARTIQ RTIO → /api/artiq/kernel (reset · break_realtime · gate · parallel)");
+      addLine("White Rabbit → /api/wr/sync (PTP lock · offset · delay) https://white-rabbit.web.cern.ch/");
+      addLine("EVOLVE cycle → /api/evolve (WR · ARTIQ kernel · Ralph metrics dry)");
+      addLine("manual https://m-labs.hk/artiq/manual/introduction.html");
+    })();
+  </script>
+</body>
+</html>

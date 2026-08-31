@@ -1,0 +1,500 @@
+/** Knowledge-node coins graph — from docs/knowledge-nodes/org-index.json */
+export const ORG_INDEX = {
+  "schema": "genesisconductor.knowledge-node.org-index/v1",
+  "updatedAt": "2026-07-30T16:40:09Z",
+  "owner": "Kovach Enterprises / Genesis Conductor Engine",
+  "pi": {
+    "name": "Igor Holt",
+    "orcid": "0009-0008-8389-1297"
+  },
+  "coins": [
+    {
+      "id": "igor",
+      "name": "IGoR",
+      "type": "origin",
+      "label": "Origin / federated AI root (2019)",
+      "since": "2019",
+      "public": "restore",
+      "url": null,
+      "orcid": "0009-0008-8389-1297",
+      "notes": "Federated AI root (2019); archive page TBD"
+    },
+    {
+      "id": "optimization-inversion",
+      "name": "Optimization Inversion",
+      "type": "category",
+      "label": "Category",
+      "url": "https://optimization-inversion.genesisconductor.io",
+      "definition": "Category layer: invert \u201coptimize the objective\u201d into \u201crecover the structure that makes optimization possible.\u201d",
+      "notes": "Term ownership \u2260 demand capture"
+    },
+    {
+      "id": "genesis-conductor",
+      "name": "Genesis Conductor",
+      "type": "system",
+      "label": "System \u00b7 research subdivision / JV gateway under Kovach",
+      "url": "https://genesisconductor.io",
+      "definition": "System that enacts OI + TAO + DOA + agent access.",
+      "role": "research_partner_jv_gateway",
+      "notes": "Partner gateway for research programs (NSF CAIG, OI, TAO/DOA); does not replace Kovach as prime"
+    },
+    {
+      "id": "moltboss",
+      "name": "moltboss",
+      "type": "product_domain",
+      "label": "Named product/domain node (moltboss.org)",
+      "url": "https://moltboss.org"
+    },
+    {
+      "id": "ouroboros-gc",
+      "name": "Ouroboros (GC)",
+      "type": "protocol_loop",
+      "label": "Protocol loop",
+      "url": "https://ouroboros.genesisconductor.io",
+      "public": true,
+      "role": "protocol / gym / v2"
+    },
+    {
+      "id": "poole-compute-x-gc",
+      "name": "Poole Compute \u00d7 GC",
+      "type": "compute_partnership",
+      "label": "Compute partnership node",
+      "partner": "Poole Compute",
+      "role": "next-epoch compute",
+      "url": null,
+      "public": null
+    },
+    {
+      "id": "sierra-catalina-x-gc",
+      "name": "Sierra Catalina \u00d7 GC",
+      "type": "affiliate",
+      "label": "Affiliate node",
+      "partner": "Sierra Catalina",
+      "url": null,
+      "public": null
+    },
+    {
+      "id": "kovach-enterprises",
+      "name": "Kovach Enterprises",
+      "type": "legal_ops",
+      "label": "Main enterprise \u2014 contracts / bids of record",
+      "since": "2015+",
+      "public": true,
+      "role": "prime_enterprise_legal_ops",
+      "url": null,
+      "notes": "Prime for commercial/federal bid eligibility; DUNS exists (vault only); CEO Andrew Kovach; SAM Active + UEI still required for modern bids; not interchangeable with Genesis Conductor. Sensitive clearance/network notes are INTERNAL only (not for public marketing)."
+    },
+    {
+      "id": "nsf-caig-2530747",
+      "name": "NSF CAIG #2530747",
+      "type": "federal_affiliation",
+      "label": "Federal affiliation node",
+      "partner": "NSF",
+      "url": "https://www.research.gov",
+      "award": "2530747",
+      "role": "funder / PI",
+      "since": "2026",
+      "public": true,
+      "identity": "https://identity.research.gov",
+      "notes": "PI/co-PI on award #2530747; NSF IdP is not CERN SSO"
+    },
+    {
+      "id": "google-partner",
+      "name": "Google Partner",
+      "type": "affiliate",
+      "label": "Platform partner (Cloud/Workspace/Ads \u2014 fill exact program)",
+      "url": "https://partners.google.com",
+      "portal": "partner.cloud.google.com",
+      "public": null,
+      "role": "cloud credibility / marketplace"
+    },
+    {
+      "id": "anthropic-partner",
+      "name": "Anthropic partner",
+      "type": "affiliate",
+      "label": "Platform partner (API builder / commercial \u2014 fill exact program)",
+      "url": "https://console.anthropic.com",
+      "public": null,
+      "role": "frontier-model implementation"
+    },
+    {
+      "id": "notion-partner",
+      "name": "Notion Partner",
+      "type": "affiliate",
+      "label": "Platform partner (knowledge ops)",
+      "url": "https://partners.notion.com",
+      "public": null,
+      "role": "research OS / knowledge systems"
+    },
+    {
+      "id": "shopify-partner",
+      "name": "Shopify Partner",
+      "type": "affiliate",
+      "label": "Platform partner (commerce systems)",
+      "url": "https://partners.shopify.com",
+      "public": null,
+      "role": "commerce / distribution surface"
+    },
+    {
+      "id": "cern-auth",
+      "name": "CERN SSO / SP Proxy",
+      "type": "federal_affiliation",
+      "label": "Research identity node (ORCID via CERN SP Proxy)",
+      "url": "https://auth.cern.ch",
+      "public": true,
+      "role": "auth.docs.cern.ch; not staff affiliation until Users Office",
+      "orcid": "0009-0008-8389-1297"
+    },
+    {
+      "id": "lens-profile",
+      "name": "The Lens",
+      "type": "affiliate",
+      "label": "Scholarly discovery node",
+      "url": "https://www.lens.org",
+      "public": true,
+      "role": "profile sync from ORCID"
+    },
+    {
+      "id": "tao",
+      "name": "Thermodynamic-Aware Orchestration (TAO)",
+      "type": "category",
+      "label": "Primary new coin \u2014 energy/erasure/sampling as control variables",
+      "url": "https://genesisconductor.io",
+      "public": true,
+      "role": "Landauer DOI \u00b7 GC site \u00b7 THRML ops",
+      "definition": "Orchestration of models/agents that treats energy, erasure, and sampling cost as first-class control variables."
+    },
+    {
+      "id": "mer",
+      "name": "Market Energy Ranking (MER)",
+      "type": "protocol_loop",
+      "label": "Satellite measurement language (agentic landscape energy model)",
+      "url": "https://tender-vow-ysj6.here.now",
+      "public": true,
+      "role": "thrml_manage \u00b7 scoreboard",
+      "definition": "Steady-state share of an agentic landscape estimated by sampling an energy model over competitors."
+    },
+    {
+      "id": "thrml-market-ops",
+      "name": "THRML Market Ops",
+      "type": "protocol_loop",
+      "label": "QFLOP-pattern ramp/monitor/checkpoint on market factors via THRML/Ising",
+      "url": null,
+      "public": null,
+      "role": "thrml-market package"
+    },
+    {
+      "id": "doa",
+      "name": "Decentralized Orchestration Authority (DOA)",
+      "type": "protocol_loop",
+      "label": "On-chain skill metering + escrow (Yennefer Protocol)",
+      "url": "https://genesisconductor.io/doa",
+      "public": true,
+      "role": "Base/Polygon \u00b7 coining in progress"
+    },
+    {
+      "id": "enkg",
+      "name": "EnKG",
+      "type": "category",
+      "label": "Ensemble Kalman Diffusion Guidance \u2014 scientific node",
+      "url": null,
+      "public": true,
+      "role": "ORCID keywords + research pack"
+    },
+    {
+      "id": "diamondnode-qflop",
+      "name": "diamondNode / QFLOP / wQFLOP",
+      "type": "system",
+      "label": "Ops + on-chain metering vocabulary",
+      "url": "https://dn.genesisconductor.io",
+      "public": true,
+      "role": "operational language"
+    },
+    {
+      "id": "yennefer",
+      "name": "Yennefer",
+      "type": "system",
+      "label": "Protocol + orchestration authority (coining)",
+      "url": null,
+      "public": null,
+      "role": "goal tracking / memory"
+    },
+    {
+      "id": "shop-gc",
+      "name": "shop.genesisconductor.io",
+      "type": "product_domain",
+      "label": "Commerce surface node",
+      "url": "https://shop.genesisconductor.io",
+      "public": true
+    },
+    {
+      "id": "api-gc-v2",
+      "name": "api.genesisconductor.io/v2",
+      "type": "system",
+      "label": "API surface (llms, x402)",
+      "url": "https://api.genesisconductor.io/v2",
+      "public": true
+    }
+  ],
+  "partners": [
+    {
+      "name": "Poole Compute",
+      "url": null,
+      "role": "next-epoch compute",
+      "since": null,
+      "public": null
+    },
+    {
+      "name": "Rooke Poole",
+      "url": null,
+      "role": "lead / collaborator",
+      "since": null,
+      "public": null
+    },
+    {
+      "name": "Sierra Catalina",
+      "url": null,
+      "role": null,
+      "since": null,
+      "public": null
+    },
+    {
+      "name": "Ouroboros (GC)",
+      "url": "https://ouroboros.genesisconductor.io",
+      "role": "protocol / gym / v2",
+      "since": null,
+      "public": true
+    },
+    {
+      "name": "Kovach Enterprises",
+      "url": null,
+      "role": "legal / ops",
+      "since": "2015+",
+      "public": true
+    },
+    {
+      "name": "IGoR",
+      "url": null,
+      "role": "federated AI root",
+      "since": "2019",
+      "public": "restore"
+    },
+    {
+      "name": "NSF",
+      "url": "https://www.research.gov",
+      "role": "funder / PI",
+      "award": "2530747",
+      "since": "2026",
+      "public": true
+    },
+    {
+      "name": "Google",
+      "url": "https://partners.google.com",
+      "role": "Partner program (fill tier/ID)",
+      "since": null,
+      "public": null
+    },
+    {
+      "name": "Anthropic",
+      "url": "https://console.anthropic.com",
+      "role": "Partner / API builder",
+      "since": null,
+      "public": null
+    },
+    {
+      "name": "Notion",
+      "url": "https://partners.notion.com",
+      "role": "Partner",
+      "since": null,
+      "public": null
+    },
+    {
+      "name": "Shopify",
+      "url": "https://partners.shopify.com",
+      "role": "Partner",
+      "since": null,
+      "public": null
+    },
+    {
+      "name": "CERN",
+      "url": "https://auth.cern.ch",
+      "role": "SSO / research identity",
+      "since": "2026",
+      "public": true
+    },
+    {
+      "name": "The Lens",
+      "url": "https://www.lens.org",
+      "role": "scholarly profile",
+      "since": null,
+      "public": true
+    }
+  ],
+  "edges": [
+    {
+      "from": "igor",
+      "to": "optimization-inversion",
+      "rel": "roots"
+    },
+    {
+      "from": "optimization-inversion",
+      "to": "genesis-conductor",
+      "rel": "category_of"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "ouroboros-gc",
+      "rel": "hosts_protocol"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "moltboss",
+      "rel": "product_domain"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "poole-compute-x-gc",
+      "rel": "partnership"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "sierra-catalina-x-gc",
+      "rel": "affiliate"
+    },
+    {
+      "from": "kovach-enterprises",
+      "to": "genesis-conductor",
+      "rel": "legal_ops"
+    },
+    {
+      "from": "nsf-caig-2530747",
+      "to": "genesis-conductor",
+      "rel": "funds"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "google-partner",
+      "rel": "platform_partner"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "anthropic-partner",
+      "rel": "platform_partner"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "notion-partner",
+      "rel": "platform_partner"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "shopify-partner",
+      "rel": "platform_partner"
+    },
+    {
+      "from": "igor",
+      "to": "cern-auth",
+      "rel": "identity_via_orcid"
+    },
+    {
+      "from": "igor",
+      "to": "lens-profile",
+      "rel": "scholarly_profile"
+    },
+    {
+      "from": "nsf-caig-2530747",
+      "to": "cern-auth",
+      "rel": "evidence_for_external_affiliation"
+    },
+    {
+      "from": "igor",
+      "to": "moltboss",
+      "rel": "product_line"
+    },
+    {
+      "from": "optimization-inversion",
+      "to": "tao",
+      "rel": "category_stack"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "tao",
+      "rel": "enacts"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "mer",
+      "rel": "measures_with"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "doa",
+      "rel": "enacts"
+    },
+    {
+      "from": "tao",
+      "to": "mer",
+      "rel": "measured_by"
+    },
+    {
+      "from": "doa",
+      "to": "yennefer",
+      "rel": "protocol_authority"
+    },
+    {
+      "from": "diamondnode-qflop",
+      "to": "thrml-market-ops",
+      "rel": "ops_pattern"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "shop-gc",
+      "rel": "commerce_surface"
+    },
+    {
+      "from": "genesis-conductor",
+      "to": "api-gc-v2",
+      "rel": "api_surface"
+    },
+    {
+      "from": "enkg",
+      "to": "nsf-caig-2530747",
+      "rel": "research_funded_by"
+    },
+    {
+      "from": "kovach-enterprises",
+      "to": "genesis-conductor",
+      "rel": "jv_research_gateway"
+    }
+  ],
+  "sources": [
+    "Desktop/Genesis Conductor/growth/aeo-seo-geo/02_PARTNER_ECOSYSTEM.md",
+    "Desktop/Genesis Conductor/growth/aeo-seo-geo/profiles/NSF_RESEARCH_GOV_CERN_AUTH.md",
+    "Desktop/Genesis Conductor/growth/aeo-seo-geo/profiles/LENS_CERN_OTHER_NODES.md",
+    "Desktop/Genesis Conductor/growth/aeo-seo-geo/07_POWER_TOWER_KNOWLEDGE_NODES.md"
+  ],
+  "doctrine": "Power tower arbitration coins knowledge nodes; marketplaces price them; QFLOP/THRML ops measure them. We don't outrank giants\u2014we name the layer they don't own.",
+  "entityModel": {
+    "prime": {
+      "name": "Kovach Enterprises",
+      "role": "main_enterprise",
+      "description": "Legal entity of record for commercial and federal contracts and bids. DUNS exists (vault only). SAM/UEI when Active required for modern bid eligibility.",
+      "ceo": "Andrew Kovach",
+      "publicNotes": "CEO of Kovach Enterprises (main enterprise / prime).",
+      "internalSensitiveDoc": "docs/federal/kovach-gc-jv/KEY_PERSONNEL.md",
+      "govBlockersTunnel": "docs/federal/kovach-gc-jv/GOV_BLOCKERS_TUNNEL.md",
+      "fflLicensingDoc": "docs/federal/kovach-gc-jv/FFL_LICENSING.md",
+      "marketingBan": "Do not publish past TS, NSA career narrative, FishCloud, or TSSC network in marketing or public knowledge-graph copy."
+    },
+    "researchPartner": {
+      "name": "Genesis Conductor",
+      "role": "research_subdivision_jv_gateway",
+      "description": "Partner that acts as research subdivision / JV gateway under Kovach; not a substitute prime for bidding."
+    },
+    "goal": "goal/research-gov-kovach-gc-jv",
+    "goalDoc": "docs/superpowers/plans/GOAL_RESEARCH_GOV_KOVACH_GC_JV.md",
+    "fulfillmentPack": "docs/federal/kovach-gc-jv/",
+    "agentStatus": "scaffolding_complete",
+    "status": "not_reached"
+  }
+} as const;
