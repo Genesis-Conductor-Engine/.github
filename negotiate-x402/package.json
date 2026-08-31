@@ -1,0 +1,17 @@
+{
+  "name": "negotiate-x402",
+  "version": "1.0.0",
+  "description": "Dynamic high-to-low x402 offer arbitration (proprietary IP of Genesis Conductor / Kovach JV). Start highest price, on rejection follow up with lowered price until acceptance. Maximizes payment per client. Use with ralphloop 10x profit flywheel.",
+  "main": "negotiate.ts",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["x402", "negotiation", "arbitration", "payment", "usdc", "agent", "bargain"],
+  "author": "Genesis Conductor",
+  "license": "Proprietary",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/genesisconductor/negotiate-x402"
+  }
+}
