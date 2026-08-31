@@ -1,0 +1,173 @@
+Metadata-Version: 2.4
+Name: gc-crew-mcp
+Version: 0.1.0
+Summary: CrewAI-compatible MCP adapter with trust policy for Genesis Conductor crews
+Author: Genesis Conductor Engine
+License: MIT
+Project-URL: Homepage, https://genesisconductor.io
+Project-URL: Health, https://optimization-inversion.genesisconductor.io/health
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Provides-Extra: crewai
+Requires-Dist: crewai>=0.80.0; extra == "crewai"
+Provides-Extra: mcp
+Requires-Dist: mcp>=1.0.0; extra == "mcp"
+Provides-Extra: logfire
+Requires-Dist: logfire>=2.0; extra == "logfire"
+Provides-Extra: all
+Requires-Dist: gc-crew-mcp[crewai,logfire,mcp]; extra == "all"
+
+# gc-crew-mcp-bridge
+
+CrewAI-compatible MCP adapter and trust policy for Genesis Conductor multi-agent crews.
+
+Task 1 restored the home-repo deny-all `.gitignore` surface (required for allowlist `!` lines to work) and un-ignores this package beside `x402-paid-service`.
+
+## What this is
+
+- **Trust policy** (`gc_crew_mcp.trust`): allowlist trusted MCP hosts, block dangerous tools by default.
+- **Agent specs** (`gc_crew_mcp.agents`): declarative `AgentSpec` + `to_crewai_kwargs` for CrewAI (or pure-stdlib fallback when `crewai` is not installed).
+- **Crew topology** (`gc_crew_mcp.crew_topology`): multi-domain roster with isolation (`Domain`, `CREW_ROSTER`, `validate_roster`, `parallel_dispatch_plan`).
+- **Evolve metrics** (`gc_crew_mcp.metrics`, `evolve_hook`, `x402_client`): `RunMetrics` → Ralph payload → `POST /admin/slices` with x402 402 awareness (mock transport in tests; no live pay).
+
+## Crew topology (domain isolation)
+
+| Role | Domain | Allowed tools | MCP / base |
+|------|--------|---------------|------------|
+| Researcher | `RESEARCH` | `search`, `get_status`, `list_tools` | `https://optimization-inversion.genesisconductor.io/mcp` (placeholder) |
+| Payment | `PAYMENT` | `get_price`, `inspect_402`, `list_tiers` | `https://optimization-inversion.genesisconductor.io/.well-known/x402` (trusted host; no settle in unit tests) |
+| Ops | `OPS` | `get_status`, `health` | trusted ambient MCP URL; no secrets |
+| Evolve coach | `EVOLVE` | `post_metrics`, `list_candidates` | no production MCP beyond retrainer base (`RETRAINER_BASE_URL`) |
+
+Isolation rules: one domain per agent; `domains_conflict` is true for the same domain string; `RESEARCH` conflicts with none of `{PAYMENT, OPS, EVOLVE}`; `PAYMENT` would conflict with `OPS` only if both had deploy (they must not). `validate_roster` rejects blocked tools in `allowed_tools` and untrusted MCP URLs.
+
+## Trusted hosts
+
+HTTPS only (remote):
+
+- `optimization-inversion.genesisconductor.io`
+- `fed.genesisconductor.io`
+- any host ending with `.genesisconductor.io`
+
+HTTP only (local tests):
+
+- `localhost`
+- `127.0.0.1`
+
+## Default blocked tools
+
+`delete`, `deploy`, `secret_put`, `write_file`, `rm`, `drop_table`
+
+Agents use **deny-all-then-allow** via `filter_tools`:
+
+- `allowed=None` → no tools pass (`[]`)
+- `allowed={...}` → only those names, minus blocked
+- custom `blocked=` is **unioned** with `DEFAULT_BLOCKED_TOOLS` (cannot remove defaults)
+
+## MCP placeholder
+
+Researcher MCP URL:
+
+```
+https://optimization-inversion.genesisconductor.io/mcp
+```
+
+This is a **placeholder**. The ambient health endpoint is:
+
+```
+https://optimization-inversion.genesisconductor.io/health
+```
+
+Health is **not** an MCP. The real `/mcp` path may 404 until wired; the URL still must pass trust checks.
+
+## Install / test
+
+```bash
+cd gc-workers/gc-crew-mcp-bridge
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+Optional extras:
+
+```bash
+pip install -e ".[crewai]"   # optional; adapter works without it
+pip install -e ".[mcp]"
+pip install -e ".[logfire]"  # optional observability; no hard dep
+```
+
+## CLI (Domains A / B / C)
+
+stdlib entry — no third-party deps required:
+
+```bash
+cd gc-workers/gc-crew-mcp-bridge
+export PYTHONPATH=src
+
+python -m gc_crew_mcp version
+python -m gc_crew_mcp trust-check \
+  https://optimization-inversion.genesisconductor.io/mcp
+python -m gc_crew_mcp roster
+python -m gc_crew_mcp evolve-dry --goal-status partial
+# Live network optional smoke (unit tests inject opener; no pay):
+python -m gc_crew_mcp x402-discover
+```
+
+| Command | Domain | Exit 0 when | Notes |
+|---------|--------|-------------|--------|
+| `trust-check URL...` | A | all URLs trusted | else exit **2**; JSON `[{url, trusted}]` |
+| `roster` | B | `validate_roster` empty | prints `parallel_dispatch_plan`; exit **1** if validation messages |
+| `evolve-dry` | C | status `payment_required` or `ok` | default **mock 402** transport; flags `--quality`, `--latency-ms`, `--cost-usdc6`, `--goal-status`, `--candidate-id`, `--base-url` |
+| `x402-discover` | C | discovery fetch ok | GET `/.well-known/x402`; prints `{match, discovered, expected}`; **no payment**; untrusted base → exit **2** |
+| `version` | — | always | package version string |
+
+Exit codes: **0** success, **2** usage/validation (untrusted URL, bad args), **1** runtime error.
+
+Observability: every command except `version` calls `configure_observability()` at start. Without `logfire` or `LOGFIRE_TOKEN`, spans/logs are no-ops. Optional stderr debug: `GC_CREW_MCP_DEBUG=1`.
+
+Env **names** only (never log values): `LOGFIRE_TOKEN`, `RETRAINER_BASE_URL`, `GC_MCP_TOKEN`, `X402_PAYMENT_PROOF`, `X_ADMIN_KEY`.
+
+## Evolve hook (Domain C)
+
+```python
+from gc_crew_mcp import RunMetrics, submit_metrics
+
+metrics = RunMetrics(
+    quality=0.9,
+    latency_ms=120.0,
+    cost_usdc6=0,
+    goal_status="partial",  # reached|not_reached|partial|ambient|unknown
+    candidate_id=None,
+)
+
+# Dry-run: inject transport — never live-pay in unit tests.
+def mock_transport(method, url, headers, body):
+    return 402, {"accepts": [{"amount": "10000", "network": "eip155:8453",
+                              "payTo": "0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8"}]}
+
+result = submit_metrics(
+    "https://optimization-inversion.genesisconductor.io",
+    metrics,
+    transport=mock_transport,
+)
+# result["status"] in {"ok", "payment_required", "error"}
+```
+
+x402 contract constants: `DEFAULT_PRICE_USDC6=10000` ($0.01), network `eip155:8453`,
+payTo vault documented in `x402_client`. Auth headers only: `X-Payment-Proof`, `x-admin-key`.
+
+See operator runbook: `docs/superpowers/plans/GC_CREW_MCP_EVOLVE_RUNBOOK.md`.
+
+## Env var names only (no secrets in repo)
+
+- `GC_MCP_TOKEN`
+- `RETRAINER_BASE_URL`
+- `X402_PAYMENT_PROOF`
+- `X_ADMIN_KEY`
+- `LOGFIRE_TOKEN`
+- `GC_CREW_MCP_DEBUG` (`1` for stderr debug when Logfire inactive)
+
+## Constraints
+
+- No fund movement / no live x402 settle in this package's unit tests.
+- No secrets committed.
+- CLI default paths never live-pay (`evolve-dry` uses mock 402).

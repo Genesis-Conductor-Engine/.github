@@ -1,0 +1,9 @@
+{
+  "status": "payment_required",
+  "x402": {
+    "accepts_count": 1,
+    "network": "eip155:8453",
+    "payTo": "0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8",
+    "price_usdc6": 10000
+  }
+}

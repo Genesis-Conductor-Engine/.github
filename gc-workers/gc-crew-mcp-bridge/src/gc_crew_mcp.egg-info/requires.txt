@@ -1,0 +1,12 @@
+
+[all]
+gc-crew-mcp[crewai,logfire,mcp]
+
+[crewai]
+crewai>=0.80.0
+
+[logfire]
+logfire>=2.0
+
+[mcp]
+mcp>=1.0.0
