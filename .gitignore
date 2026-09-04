@@ -8,6 +8,7 @@
 !/.gitmodules
 !/AGENTS.md
 !/CLAUDE.md
+!/GEMINI.md
 !/LLMS.txt
 !/copilot-instructions.md
 !/llms.txt
@@ -61,6 +62,7 @@
 **/.env
 **/.env.*
 !**/.env.example
+**/.dev.vars
 **/*.pem
 **/*.key
 **/*token*.txt
