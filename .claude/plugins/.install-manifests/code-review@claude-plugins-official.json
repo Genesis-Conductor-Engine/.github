@@ -1,0 +1,10 @@
+{
+  "pluginId": "code-review@claude-plugins-official",
+  "createdAt": "2026-03-22T14:11:28.525Z",
+  "files": {
+    ".claude-plugin/plugin.json": "61af303bf05e05338c82910405292059c932e51567d8cf368c40e77519d1c742",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "README.md": "1fca74bab6969b609519927ae49112760e15d8113eef6bbcf9b9a96c49d73c89",
+    "commands/code-review.md": "7d5a0bc9a41babad32a387152f9680316997bc4ad376928827d670b1760cc890"
+  }
+}

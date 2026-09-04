@@ -1,0 +1,8 @@
+{
+  "pluginId": "gitlab@claude-plugins-official",
+  "createdAt": "2026-03-22T14:14:58.752Z",
+  "files": {
+    ".claude-plugin/plugin.json": "986e551c1f4f6eb0029dfab23ea78cbaa2a9663f72b6d686cd72ff221e9c8747",
+    ".mcp.json": "0d10a9cbe5cfe346c9f6bc1092d9be57eb326161ff73a50d88c0cd1b68ce5d26"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "pluginId": "deploy-on-aws@claude-plugins-official",
+  "createdAt": "2026-03-22T14:16:27.806Z",
+  "files": {
+    ".claude-plugin/plugin.json": "fdfcc0b847a9da9839c0cd022d7da65b0f8de930251ee0b0b72cda6461a8d4d2",
+    ".mcp.json": "0002549607eba91f7bfea650990d3eabbc7c4a9bcb917a6dc9b0b416d302bd4c",
+    "skills/deploy/SKILL.md": "27086efaeaa12b622577f1c3b6eaff50d32e83919029e625b06f59d9c29781c3",
+    "skills/deploy/references/cost-estimation.md": "714114f28838bafb5f17155aa4f99bc60ad7549599746839081ee051a65ad76b",
+    "skills/deploy/references/defaults.md": "9fb0da3ddad7c63849a6c8d27657d7a170d83d6e4b6f054c4b54cc70b3adb820",
+    "skills/deploy/references/security.md": "3a8bd4ae1446d67eb0859c47f7aaae37385f87417b1abe76ded0adebdd27fef2"
+  }
+}

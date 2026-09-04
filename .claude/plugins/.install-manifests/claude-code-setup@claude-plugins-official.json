@@ -1,0 +1,16 @@
+{
+  "pluginId": "claude-code-setup@claude-plugins-official",
+  "createdAt": "2026-03-22T14:11:04.371Z",
+  "files": {
+    ".claude-plugin/plugin.json": "f5cc68a308d6a781596325a635272639e823dfaad6aa66494338715306d53fe6",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "README.md": "03338a6d1b35349058d187b4d615bc7d1115c0ffb0dd8fbb54cdfd9519d88335",
+    "automation-recommender-example.png": "fc81926b540b89be2d10eea6d9d5758fa3ae4d747ab4cd3e34c0238ecc190431",
+    "skills/claude-automation-recommender/SKILL.md": "bd8789052f89e784b744a2104d6f3f1373526ebe9e0576a3a5f6f4c73633f66f",
+    "skills/claude-automation-recommender/references/hooks-patterns.md": "7b6e91b53aa0f1ed471fd66e177de17a88c1d6620ce95f5c8e8cdfebd20d939e",
+    "skills/claude-automation-recommender/references/mcp-servers.md": "64a12ab24618e4987ba947638fb598683635e80db92f3253e87d5b06c878174d",
+    "skills/claude-automation-recommender/references/plugins-reference.md": "6570ff4c853253b3f15fb62e5d540cbf0ce3371936437791dde8fb53b7d444f3",
+    "skills/claude-automation-recommender/references/skills-reference.md": "b4b57d953526a07146d5757ca5332034b9b4b4eeba839e4bb08111398c94556f",
+    "skills/claude-automation-recommender/references/subagent-templates.md": "7f9a107d8619ff96fea07d5a17da31b269cec0ee343e5a9ff643c0d6cb4ba944"
+  }
+}

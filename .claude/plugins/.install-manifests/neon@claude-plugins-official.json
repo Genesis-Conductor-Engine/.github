@@ -1,0 +1,10 @@
+{
+  "pluginId": "neon@claude-plugins-official",
+  "createdAt": "2026-03-22T14:25:08.227Z",
+  "files": {
+    ".claude-plugin/plugin.json": "d5ad7e81949d4b128aeaf2cfdd9e71ff9ba513139427c7d4ba69dd20c23b6abf",
+    ".cursor-plugin/plugin.json": "f8eaaa3f5e6251331646ece68c2dc23618c80ac0300e52d8b44de328529900a0",
+    "assets/logo.svg": "2b1aaef0b2de5d30b9a00778a0a9b9df2255be08a939a9521f3c93a46de521cf",
+    "mcp.json": "4c78e4dd9a830d0777a4fd891161cf0eac6ebeab37c19d2fa78600a08ef305ef"
+  }
+}

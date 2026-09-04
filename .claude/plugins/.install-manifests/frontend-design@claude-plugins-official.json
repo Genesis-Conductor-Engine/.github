@@ -1,0 +1,10 @@
+{
+  "pluginId": "frontend-design@claude-plugins-official",
+  "createdAt": "2026-03-22T14:14:25.480Z",
+  "files": {
+    ".claude-plugin/plugin.json": "fd9a7db11f5dec771d9e29ad1d6a3298c12f04c81c3a6457099b81fe477d835d",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "README.md": "5351137ecb2c5adfcdbadcdbbeda1eab16409bae98eb53f62f945514552d6706",
+    "skills/frontend-design/SKILL.md": "d39adf3a983de7dafc75991590d54f091755f7e4163d5a5ed085ecd719157184"
+  }
+}
