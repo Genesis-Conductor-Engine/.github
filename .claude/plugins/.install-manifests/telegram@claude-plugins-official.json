@@ -1,0 +1,17 @@
+{
+  "pluginId": "telegram@claude-plugins-official",
+  "createdAt": "2026-03-22T14:23:58.050Z",
+  "files": {
+    ".claude-plugin/plugin.json": "8d2433e36054327f4bcd3294aa086488247b6d54e6456e173cceb16cca190be2",
+    ".mcp.json": "0ee637b9a76aa35b3b9eb9a76b4b8fb036bc61651711e1af72badedde5e3c875",
+    ".npmrc": "3a951f66e7e0f3e2dd1832473a871357c4a507b51100636b73bcf6ff0dd78b6c",
+    "ACCESS.md": "093616a1e8d23d84ab241c406ab6c183578f6c760d697d01976a6594fc901fc3",
+    "LICENSE": "dfd016a63459229ceb791be757c3bede084fb22303c36b61342db1b8f58cc450",
+    "README.md": "dc0acf9f6d784e711ac3b239506b7b9239f9bec82961aabf3115ad2621f8e085",
+    "bun.lock": "39eac7ce248c09f338abcb6f682137ae4bf0dce19672b1c9be2fb7eb16bfcbe2",
+    "package.json": "364a9286a10497daeecce94607682f31de522413252209dd82778d8d9fff2b47",
+    "server.ts": "a28227af9d95d2e43706fc9ebcb17862600451c8cc3ea58160d1edf04030ffd1",
+    "skills/access/SKILL.md": "c499635ef8a9a68cb166bb737a7f4d0620154d1bc9e96934cb8b630fadf22c86",
+    "skills/configure/SKILL.md": "7a58fa4efd09dd8323894e0e505bc21de11e657994710a3c535f9f5072fe36b3"
+  }
+}

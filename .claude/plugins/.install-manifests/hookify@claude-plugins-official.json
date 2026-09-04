@@ -1,0 +1,31 @@
+{
+  "pluginId": "hookify@claude-plugins-official",
+  "createdAt": "2026-03-22T14:21:26.572Z",
+  "files": {
+    ".claude-plugin/plugin.json": "926ed28095535263e3953ac30a3be8c034ff8e3efd1ce28c529cf6e0ba8e902b",
+    ".gitignore": "9c4f1216608d920b999f9caee6dd91169b5ea0c12eeb2e2d803cb1be7e922a16",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "README.md": "976542a7e018465e44855bed6f53fae12aea7ca59b6e1db40f8880b72b09e38c",
+    "agents/conversation-analyzer.md": "535ec8acb55b51bfac83a54f5f5c70746a52adb7a0b785e9be0e376c7e2eb12c",
+    "commands/configure.md": "1cb84c1055f6069f2b16ee5b8691f776640267d98b65c09fb81c7569b3197c5f",
+    "commands/help.md": "39529a6e6473c45d08efbcf7053369a17e04cd3fda0bdf6f186eb20c94135d33",
+    "commands/hookify.md": "7560e58edc6cbb899c0b171292f63654fd1a0bd77354e7f89e2457acd0241e30",
+    "commands/list.md": "6128e44611d981e911c0e956d619b02924f46407a00bbb9deff2e4f3465b9368",
+    "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "core/config_loader.py": "9f1d083cc43883323ddf00747e7696a4fd9d478ddd63f5b43038657da8516e56",
+    "core/rule_engine.py": "6c70424f7eafdea4e803c7bcb93305e1e75bfd8c405834ebfcdf34bb79f66fb4",
+    "examples/console-log-warning.local.md": "240788cba25f5a403f13682c703eb2bed5ef3245aa9e82faaca628288a08e53b",
+    "examples/dangerous-rm.local.md": "fad5e3e0d5dc1f60901d2d4d948a609eeeb69d0e91f49fcb02d81e4e01489acf",
+    "examples/require-tests-stop.local.md": "f5d950883a4c20f1660af1ef589805f73ffe409167eb6b8db9a60b6ad05f7cfb",
+    "examples/sensitive-files-warning.local.md": "f81037232ae3d37bc71f74b49adb16b568fa0bfa1318638c2e019d089480749b",
+    "hooks/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "hooks/hooks.json": "838dd2ffbe325307cc23a02ef541fd45c25fd42492d64ccbe9ec11233a3a04f0",
+    "hooks/posttooluse.py": "52f3b71247cc376fb4226ab44258e89b02f997840cadbfd0e1ebd06009b76f32",
+    "hooks/pretooluse.py": "5d28948f576f93caefcb4089959db2066147334c61be3139a1c113593255a8c7",
+    "hooks/stop.py": "6ebc614e48dd994a4fe2aa1a3f2b5ab413ffd2b3c22f81c66cacd23f9c92919e",
+    "hooks/userpromptsubmit.py": "577824bc91e4510eb6f299b3485f35892eaf710108213e01f4c86eb350a813cb",
+    "matchers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "skills/writing-rules/SKILL.md": "2994b5d3152243b1a1cbf8358e9d7c18f290f31a23920647f31053c3efdf990d",
+    "utils/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

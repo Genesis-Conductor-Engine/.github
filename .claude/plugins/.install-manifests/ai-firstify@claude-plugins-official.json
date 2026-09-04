@@ -1,0 +1,20 @@
+{
+  "pluginId": "ai-firstify@claude-plugins-official",
+  "createdAt": "2026-03-22T14:10:00.754Z",
+  "files": {
+    ".claude-plugin/plugin.json": "cab8a8df95c8ea866a72d3f8d6a2579836bf8f49c2c725843d3229972f34ceb4",
+    "README.md": "e7f81c0fa6616dc0385db74832c8060ae14175f138d0803d85eb165a840cd4f5",
+    "codex/AGENTS.md": "ccc9160e19f59ed45129eb25f656f8f8bdcc36e5c629a1e8370846f55668025a",
+    "skills/ai-firstify/SKILL.md": "aa7b8524bf833210194b399dce4c3ee1f309e9cabf7071225acea609d3763741",
+    "skills/ai-firstify/references/anti-patterns.md": "816a22607e36846c6e0205e4979e8ec0eab3fd22fdccc01071e5e1fde5922ea3",
+    "skills/ai-firstify/references/assessment-rubric.md": "43b7a05bd96903ebc38565506236c3cefe2827f6127d0608846f9588bb9264b9",
+    "skills/ai-firstify/references/mode-audit.md": "f84bab3e79c5aa4c758bc279c27913915632a159532a58f5f442cacdad2d3c15",
+    "skills/ai-firstify/references/mode-bootstrap.md": "02204a904b38d474bf4e3b4dcbbc579d569ff3f8a685db23779ce66b9fe35c8e",
+    "skills/ai-firstify/references/mode-reengineer.md": "15fe40c2448a4825b8b640442e86bb936642bd2e50fbb974d9f1561181683ba5",
+    "skills/ai-firstify/references/patterns.md": "fbd3809619aa00cc1cab0344814ce949087c16a0127d3b367c33039820ba34e1",
+    "skills/ai-firstify/references/principles.md": "0906af23385c9485b812d7c1e845618f1947a3dc02b5dfe6f99e783178fd54a7",
+    "skills/ai-firstify/references/project-structure.md": "4229f2e639ae031453ce74d97c51cb624ae18733fb45e4acd0035be4c7a2d11b",
+    "skills/ai-firstify/references/skill-architecture.md": "181613941a494c58684bd1ec54b5fe43fa34bcc75f5fa91ffaed4e89024c8b0f",
+    "skills/ai-firstify/scripts/validate-report.sh": "fac30ee1dc6a177b446a764d8a3eccda19c159821f0a15f6a75aa0f27cb19f31"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "pluginId": "railway@claude-plugins-official",
+  "createdAt": "2026-03-22T14:19:18.695Z",
+  "files": {
+    ".claude-plugin/plugin.json": "6df0939e83cef66f9de17a8ac7d4260af47fc7a690fe4be480c261817f2d013b",
+    "hooks/auto-approve-api.sh": "b316b9c854a9da4005825cc78a7ed867a8b10ac65fe41b0aa9226796939222f3",
+    "hooks/hooks.json": "39497d99e7f1059b3288978461c0d0ea7eba99f6670defa78539ee52c1c719d8",
+    "skills/use-railway/SKILL.md": "82cf3d7276ce9187c4212332f5a46eeeb421dc31662168c061e7171125cdda72",
+    "skills/use-railway/references/configure.md": "a23921a6494cf493c84c93d77be7220f4a693b6c7dcb5a32c3be8a864c8a5a35",
+    "skills/use-railway/references/deploy.md": "3074b0a13d833d9c6842843404c91a67fc9bce91d0dfaedb010599ba9076ff86",
+    "skills/use-railway/references/operate.md": "8e76ea199b86cdedf3ca55e84612c8d05ff789f288dfcdb69d88a2cc650f2975",
+    "skills/use-railway/references/request.md": "35de6fc372bb6c1e290c715335fcc68e44730cd9387af12bcb5202639d509cf2",
+    "skills/use-railway/references/setup.md": "4c3e6edd39aea8b77e2c017bf2b1b66e7d59ef981bfd0c3d85e5a145a9726b2a",
+    "skills/use-railway/scripts/railway-api.sh": "bf49ba667c0c7209d99168314351ff365de8b7293699392109b5ffe3503379fd"
+  }
+}

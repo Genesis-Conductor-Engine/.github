@@ -1,0 +1,8 @@
+{
+  "pluginId": "firebase@claude-plugins-official",
+  "createdAt": "2026-03-22T14:12:24.864Z",
+  "files": {
+    ".claude-plugin/plugin.json": "72250fde24860d0b1ed3666ee056073bf389e784afba1b693f6596eceab83980",
+    ".mcp.json": "c396d40ac1069deb3a92baf85786da37957dd1bed19ed2a4cfe3073261c5ca3a"
+  }
+}

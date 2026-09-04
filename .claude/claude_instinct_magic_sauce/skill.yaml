@@ -1,0 +1,354 @@
+# claude_instinct_magic_sauce/skill.yaml
+#
+# "Magic Sauce" Claude Skill: Instinct Platform Orchestration + Numeric Verification
+# Designed for Opus/Claude orchestration runtimes: provides deterministic numeric
+# engines, commutative arbitration orchestration, MCPv1 messaging, auditability,
+# operator approval gating and turnkey actions for validating Instinct Platform v2.1.
+#
+# Canonical spec (local file path used as canonical source of truth):
+# file:///mnt/data/Instinct_Platform_Technical_White_Paper_v2.1_Final.md.pdf
+#
+skill:
+  id: instinct_magic_sauce
+  display_name: Instinct Platform — Magic Sauce
+  short_description: >
+    Precision orchestration skill for Instinct Platform v2.1. Parses the canonical whitepaper,
+    generates verification code+unit tests, runs deterministic numeric checks (NumericOracle),
+    performs commutative arbitration (Primary LLM + Verifier + NumericOracle), and produces
+    auditable compliance reports, signed artifacts, and Monte Carlo finance simulations.
+  version: "1.0.0"
+  author:
+    name: Igor Holt
+    email: holt.igor@gmail.com
+  license: proprietary
+
+metadata:
+  canonical_whitepaper: "file:///mnt/data/Instinct_Platform_Technical_White_Paper_v2.1_Final.md.pdf"
+  created_at: "2025-12-05"
+  supported_locales: ["en-US"]
+  required_claude_features: ["function-calling","tool-invoke","file-upload","signed-artifact"]
+
+triggers:
+  - type: slash_command
+    command: /instinct-audit
+    description: "Start Instinct Platform full verification & arbitration flow"
+  - type: file_upload
+    name: "whitepaper"
+    description: "Upload or reference Instinct Platform whitepaper (optional - defaults to canonical path)"
+  - type: intent
+    intent_name: "instinct.verify_and_arbitrate"
+    description: "Analyze, verify, and perform commutative arbitration on Instinct Platform claims"
+
+permissions:
+  - network: required # for calling verifier LLM or cloud services (mutual-TLS recommended)
+  - storage: read_write # for audit logs/CSV/JSON artifacts
+  - secrets: read # for LLM API keys, GCS creds
+  - run_container: required # to run sandboxed executor
+  - execute: require_operator_approval_for_outreach
+
+environment:
+  variables:
+    - PRIMARY_MODEL: "opus-4.5"                 # default primary LLM
+    - VERIFIER_MODEL: "anthropic-enterprise"    # fallback verifier
+    - NUMERIC_ORACLE_CMD: "/usr/bin/python3"    # numeric oracle runtime
+    - AUDIT_LOG_PATH: "/var/audit/instinct_logs"
+    - SIGNING_ALGO: "sha256"
+    - OPERATOR_PHRASE: 'I, <FULL NAME>, authorize live agent orchestration and confirm legal & ethical compliance.'
+
+runtime:
+  container:
+    image: "gcr.io/instinct/claude-instinct-magic:1.0.0"
+    cmd: ["./start-skill.sh"]
+    ports: []
+  cpu: "2"
+  memory: "4Gi"
+
+mcp_v1:
+  description: "Message Control Protocol v1 used for inter-agent orchestration and audit."
+  message_types:
+    REQUEST: ["msg_id","runId","from","to","type","payload","timestamp"]
+    RESPONSE: ["msg_id","in_reply_to","runId","from","to","status","payload","timestamp"]
+    EVENT: ["event_id","runId","agent","level","message","payload","timestamp"]
+    ACK: ["ack_id","msg_id","runId","from","to","timestamp"]
+    SIGN: ["artifact_hash","runId","agent","signature","timestamp"]
+  signing_method: "sha256(hex(json_bytes))"
+  transport_recommendation: "https_mutual_tls"
+
+actions:
+  parse_whitepaper:
+    description: "Parse canonical whitepaper and extract evidence_map + 25 critical claims"
+    input_schema:
+      - whitepaper_path: string # defaults to metadata.canonical_whitepaper
+    output_schema:
+      - claims_batch_json: string # path to generated JSON file
+      - evidence_map_json: string
+    operation:
+      - run: "A1.IngestAgent -> parse PDF, produce claims_batch.json & evidence_map.json"
+      - notes: "Must cite page numbers and verbatim snippets"
+
+  generate_claim_code:
+    description: "Given a claim, generate Python code and pytest unit-tests"
+    input_schema:
+      - claim: object
+      - constants: object
+    output_schema:
+      - code_py: string
+      - tests_py: string
+      - result_hash: string
+    constraints:
+      - "Code must call NumericOracle for any numeric assertion"
+      - "Return JSON only: {claim_id, code_py, tests_py, constants, result_hash}"
+
+  run_numeric_tests:
+    description: "Execute code/tests via NumericOracle in deterministic sandbox"
+    input_schema:
+      - code_py: string
+      - tests_py: string
+      - seed: string
+    output_schema:
+      - test_results_json: string
+      - numeric_outputs_json: string
+      - artifacts: [string]
+    operation:
+      - exec: "Invoke NumericOracle to run code/tests with seed"
+
+  verifier_reconstruct:
+    description: "Independent reconstruction by verifier LLM (low temperature)"
+    input_schema:
+      - claim: object
+      - whitepaper_path: string
+    output_schema:
+      - code_py: string
+      - tests_py: string
+      - expected_outputs: string
+
+  adjudicate_claim:
+    description: "Compare Primary / Verifier / NumericOracle outputs and decide PASS/FLAG/FAIL"
+    input_schema:
+      - primary_outputs
+      - verifier_outputs
+      - numeric_outputs
+      - tolerances
+    output_schema:
+      - adjudication_record_json
+
+  run_monte_carlo:
+    description: "Run finance Monte Carlo simulation (deterministic)"
+    input_schema:
+      - params: object
+      - trials: integer
+      - seed: string
+    output_schema:
+      - monte_carlo_csv: string
+      - monte_carlo_summary: object
+    operation:
+      - uses: "NumericOracle monte_carlo runner; seedable RNG; write CSV"
+
+  produce_compliance_report:
+    description: "Assemble COMPLIANCE_REPORT.json mapping claims->artifacts->tests->evidence"
+    output_schema:
+      - compliance_report_json: string
+
+  audit_log_append:
+    description: "Write signed JSONL audit entries to AUDIT_LOG_PATH"
+    input_schema:
+      - audit_record: object
+    output_schema:
+      - audit_log_url: string
+
+  operator_approval_check:
+    description: "Validate operator typed approval phrase exactly and issue approval token"
+    input_schema:
+      - full_name: string
+      - typed_phrase: string
+    output_schema:
+      - approval_token: string
+      - approved_at: string
+    constraints:
+      - "Must match OPERATOR_PHRASE exactly with the provided full_name substituted."
+
+  outreach_generate:
+    description: "Generate SOW, landing page, invoice templates. Do NOT send."
+    input_schema:
+      - offer_spec: object
+    output_schema:
+      - sow_text: string
+      - landing_page_html: string
+      - invoice_template: string
+
+  sign_artifact:
+    description: "Sign artifact (sha256) and return signature object"
+    input_schema:
+      - artifact_path: string
+    output_schema:
+      - artifact_hash: string
+      - signature: string
+
+mappings:
+  high_level_workflow:
+    - step: preflight_checks
+      requires: [parse_whitepaper, numeric_oracle_up, primary_model_up, verifier_model_up, sandbox_ready, audit_storage_writable]
+    - step: claim_loop
+      loop:
+        for: claim in claims_batch.json
+        do:
+          - generate_claim_code
+          - run_numeric_tests
+          - verifier_reconstruct
+          - run_numeric_tests (verifier)
+          - adjudicate_claim
+          - audit_log_append
+    - step: post_validations
+      - run_monte_carlo
+      - run_numeric_tests (malware triage reproduction)
+      - run_numeric_tests (psyche calibration)
+      - produce_compliance_report
+      - audit_log_append (final)
+    - step: operator_gate
+      - operator_approval_check
+      - legalguard_verdict_check
+    - step: optional_outreach (blocked until operator approval + legal guard green)
+      - outreach_generate
+      - sign_artifact
+
+tolerances:
+  eta_log_gap_typical: [19, 21]
+  eta_penalty_typical: [0.44, 0.52]
+  fast_path_fraction: [0.72, 0.76]
+  gating_net_savings: [0.56, 0.62]
+  psyche_auc: [0.73, 0.83]
+  psyche_precision: [0.65, 0.79]
+  psyche_recall: [0.56, 0.72]
+
+magic_sauce_features:
+  description: >
+    A set of advanced capabilities (the "magic sauce") that makes Claude uniquely capable
+    for the Instinct Platform: deterministic numeric anchoring, commutative arbitration orchestration,
+    programmatic unit-test generation, automatic verification with independent LLM, and auditable signing.
+  components:
+    - name: NumericOracle
+      summary: "Python3+NumPy deterministic runtime for exact arithmetic and test execution. Exposes a JSON RPC / local CLI."
+      functions:
+        - energy_theoretical(bits_processed):
+            signature: "(bits_processed: int, T: float=300.0) -> float"
+            description: "Compute E_landauer = bits_processed * k * T * ln2 using k=1.380649e-23."
+        - compute_thermodynamic_penalty_stable(plan):
+            signature: "(plan: dict) -> {penalty_weight, diagnostics}"
+            description: >
+              Implements log10 gap normalization with BEST_CASE_GAP=9, WORST_CASE_GAP=30 and returns
+              penalty_weight in [0,1] and diagnostic fields.
+        - complexity_score(prompt):
+            description: "Deterministic complexity heuristic used in LID-LIFT."
+        - shouldUseParallelPlanning(task, constants):
+            description: "Return decision boolean and expected savings calculations per LID-LIFT."
+        - psyPredict(features):
+            description: "Logistic predictor using paper beta coefficients; returns failure probability."
+        - run_notebook(name):
+            description: "Execute one of the three validation notebooks and return JSON outputs."
+        - monte_carlo_runner(params, trials, seed):
+            description: "Seedable Monte Carlo simulator that writes CSV and summary."
+
+    - name: CommutativeArbEngine
+      summary: "Orchestration logic implementing G -> E -> V -> A -> S (Generate, Execute, Verify, Adjudicate, Sign)."
+      properties:
+        - "Parallel claim processing with bounded concurrency"
+        - "Automatic low-temperature re-run on mismatches"
+        - "Escalation policy for human override"
+        - "Signed audit records after each adjudication"
+
+    - name: UnitTestAutoGen
+      summary: "LLM-assisted generator that builds pytest unit-tests for numeric claims (ensures NumericOracle executes them)."
+      behaviors:
+        - produce edge-case tests
+        - embed tolerances from skill manifest
+        - produce deterministic seeds
+
+    - name: LegalGuardHook
+      summary: "Integrates a jurisdiction rules engine and optionally remote legal microservice to mark RED/AMBER/GREEN and propose mitigations."
+
+    - name: AuditSigner
+      summary: "Canonical artifact signer producing JSONL audit log entries signed with sha256; supports GCS upload and downloadable URL."
+
+security:
+  operator_approval_phrase: 'I, <FULL NAME>, authorize live agent orchestration and confirm legal & ethical compliance.'
+  outreach_block_until:
+    - operator_approval_token_present: true
+    - legal_guard_status: "GREEN"
+  audit_policy:
+    - "All agent messages and artifacts must be logged to AUDIT_LOG_PATH as signed JSONL"
+    - "Signatures must be included in COMPLIANCE_REPORT"
+  data_retention:
+    default_days: 365
+    encryption: AES-256
+
+verification_tests:
+  - name: eta_thermo_validation
+    run: "NumericOracle.run_notebook('eta_thermo_validation.ipynb')"
+    expect: "penalty mapping: log_gap 9->1.0, 20->~0.48, 30->0.0"
+  - name: gating_pareto_validation
+    run: "NumericOracle.run_notebook('gating_and_pareto_tests.ipynb')"
+    expect: "fast_path_fraction in [0.72,0.76], net_savings ~0.59 ±0.03"
+  - name: psyche_model_validation
+    run: "NumericOracle.run_notebook('psyche_model_validation.ipynb')"
+    expect: "AUC, precision, recall within tolerances"
+
+examples:
+  - name: quick_parse
+    input: |
+      { "action": "parse_whitepaper", "whitepaper_path": "file:///mnt/data/Instinct_Platform_Technical_White_Paper_v2.1_Final.md.pdf" }
+    output: |
+      { "claims_count": 25, "claims_file": "server/claims_batch.json", "evidence_map": "server/evidence_map.json" }
+  - name: run_claim_cycle
+    input: |
+      { "action": "process_claim", "claim_id": "C2", "seed": "arb-seed-2025" }
+    output: |
+      { "adjudication_status": "PASS", "evidence": ["eta_thermo_validation_output.json"], "audit_record": "audit://run-uuid/claim-C2.jsonl" }
+
+deployment:
+  install_instructions:
+    - "Provision a Kubernetes pod or VM with container runtime and network controls."
+    - "Set required environment variables (PRIMARY_MODEL, VERIFIER_MODEL, NUMERIC_ORACLE_CMD, AUDIT_LOG_PATH)."
+    - "Mount /mnt/data or ensure canonical_whitepaper path accessible."
+    - "Ensure NumericOracle python env present with numpy, scipy, pandas."
+    - "Start container with ./start-skill.sh and confirm health endpoint /health returns OK."
+
+observability:
+  health_checks:
+    - path: /health
+    - expected: { status: "ok" }
+  metrics:
+    - claims_processed
+    - pass_rate
+    - audit_log_size_bytes
+    - monte_carlo_duration_seconds
+
+signed_artifacts_policy:
+  artifact_record:
+    fields: ["artifact_path","sha256","agent","signature","timestamp","runId"]
+  signature_algo: "sha256"
+  signing_key: "managed_in_container_or_kms" # implementation note
+
+legal_localizer:
+  suriname:
+    required_ops:
+      - "Identify procurement channels (government emergency procurement, ministry contacts)"
+      - "Identify local incumbents: maritime, mining, telecom, energy"
+      - "Tax & invoicing: whether international contractor can invoice; recommend local rep if needed"
+      - "Procurement cadence & emergency buy mechanisms"
+    output: "suriname_appendix.json"
+
+ui:
+  operator_modal:
+    title: "Operator Approval — Instinct Orchestration"
+    body: |
+      "Type the exact authorization phrase including your full name to enable LIVE actions."
+    input_label: "Type phrase"
+    button_label: "Authorize Live Run"
+    show_audit_token_on_success: true
+
+notes:
+  - "This skill enforces non-hallucination by requiring NumericOracle execution for numeric claims."
+  - "Commutative arbitration requires at least Primary + Verifier + NumericOracle to agree."
+  - "All outreach is blocked until operator approval and legal greenlight."
+
+# End of YAML

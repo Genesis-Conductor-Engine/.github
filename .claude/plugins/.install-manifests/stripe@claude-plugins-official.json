@@ -1,0 +1,17 @@
+{
+  "pluginId": "stripe@claude-plugins-official",
+  "createdAt": "2026-03-22T14:13:57.969Z",
+  "files": {
+    ".claude-plugin/plugin.json": "00fd710098ba2f96fc36c4e49259432b641b4dba391bea588ba15a380da35c5f",
+    ".mcp.json": "c8425624d85f6f4ed5e93465d5d423bf18ee8e0d1d3fe444e8fb22ed52614475",
+    "commands/explain-error.md": "4d1e56c4de18cf164ff9e227e15bb529b2d9bfc07d4e96d90d5e465a17774d6f",
+    "commands/test-cards.md": "4e2496258654baac2ab3837a3c5d273f7acb1c45e46a58293d11a1e3df23104b",
+    "skills/.gitkeep": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "skills/stripe-best-practices/SKILL.md": "618136d4aa87db4667a17dfe7125087d0f13cd63191061dd2fc4bc45ae107854",
+    "skills/stripe-best-practices/references/billing.md": "316dd0947535627acc3b9be9c831b0d0ac7fa9b63c63d7ce2704d8020132626e",
+    "skills/stripe-best-practices/references/connect.md": "2a5d371f0268f1238cf67a2e050db87f3cb714a135e272dc25ab8a374b6cc175",
+    "skills/stripe-best-practices/references/payments.md": "966d0b88930f9bb0a76fe5819683946b4fb7d31bdd9d900381c1a44b0fa7cb4a",
+    "skills/stripe-best-practices/references/treasury.md": "72d4dd044897a7291d986356e29b6c4eca503555fff63fa93c7b97fb5eb46c0d",
+    "skills/upgrade-stripe/SKILL.md": "11961cac880180a1095ec6ca2eef766dc33e392aabde590e57ea44684288ede2"
+  }
+}
