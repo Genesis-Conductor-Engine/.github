@@ -2,6 +2,7 @@
   "dependencies": {
     "@alchemy/wallet-apis": "^5.1.1",
     "axios": "^1.20.0",
+    "netlify-cli": "^23.15.1",
     "viem": "^2.55.16"
   }
 }
