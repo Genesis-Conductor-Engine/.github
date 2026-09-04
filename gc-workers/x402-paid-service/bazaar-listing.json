@@ -1,6 +1,6 @@
 {
   "name": "Yennefer x402 Paid Service — Tiered (Genesis Conductor)",
-  "description": "Tiered x402 paid API on Base + Polygon mainnet. Six tiers from $0.01 discovery calls to $9,999 agent-to-agent source-exclusive checkout. USDC settlement via the Coinbase CDP facilitator (production-grade, EIP-3009). Agent-native: pay-per-call, no accounts or API keys. Covers generic execution, premium API access, AI inference, specialized data, licensing, and plugin fulfillment.",
+  "description": "Tiered x402 paid API on Base + Polygon mainnet. Seven tiers from $0.01 discovery calls to $9,999 agent-to-agent source-exclusive checkout, plus $0.10 ERC-4337 UserOp sponsorship quotes. USDC settlement via the Coinbase CDP facilitator (production-grade, EIP-3009). Agent-native: pay-per-call, no accounts or API keys. Covers generic execution, premium API access, AI inference, specialized data, licensing, plugin fulfillment, and gas sponsorship quotes.",
   "version": "2.1",
   "url": "https://x402-paid-service.iholt.workers.dev",
   "provider": "Genesis Conductor / Yennefer",
@@ -79,6 +79,35 @@
         "ok": true,
         "tier": "discovery"
       }
+    },
+    {
+      "tier": "sponsor-userop",
+      "path": "/api/sponsor-userop",
+      "method": "POST",
+      "networks": [
+        "eip155:8453"
+      ],
+      "price": {
+        "amount": "100000",
+        "currency": "USDC",
+        "decimals": 6,
+        "displayPrice": "$0.10"
+      },
+      "network": "eip155:8453",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
+      "description": "ERC-4337 v0.6 UserOp sponsorship quote. Worker never signs or broadcasts; EntryPoint deposit cap default 0.05 ETH.",
+      "keywords": [
+        "paymaster",
+        "erc-4337",
+        "userop",
+        "gas sponsorship",
+        "account abstraction"
+      ],
+      "useCases": [
+        "quote UserOp sponsorship after USDC settlement",
+        "agent gas market on Base"
+      ]
     },
     {
       "tier": "pro",

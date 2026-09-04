@@ -153,7 +153,7 @@ describe('x402 Worker discovery routes', () => {
     expect(health.response.status).toBe(200);
     await expect(responseJson<Record<string, unknown>>(health.response)).resolves.toMatchObject({
       status: 'ok',
-      tiers: 6,
+      tiers: 7,
       vault: VAULT,
       eth_pricing_enabled: true,
     });
@@ -177,8 +177,9 @@ describe('x402 Worker discovery routes', () => {
     const x402Body = await responseJson<{ endpoints: Array<{ path: string; shopify_url?: string }> }>(
       (await dispatch('/.well-known/x402')).response,
     );
-    expect(x402Body.endpoints).toHaveLength(6);
+    expect(x402Body.endpoints).toHaveLength(7);
     expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/founders');
+    expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/sponsor-userop');
     expect(x402Body.endpoints.find((endpoint) => endpoint.path === '/api/founders')).toMatchObject({
       shopify_url: 'https://shop.example/founders',
     });
@@ -187,6 +188,7 @@ describe('x402 Worker discovery routes', () => {
       (await dispatch('/openapi.json')).response,
     );
     expect(openapi.paths).toHaveProperty('/api/source-exclusive');
+    expect(openapi.paths).toHaveProperty('/api/sponsor-userop');
     expect(openapi.paths).toHaveProperty('/.well-known/x402');
 
     await expect((await dispatch('/llms.txt')).response.text()).resolves.toContain('### POST /api/pro');
@@ -222,6 +224,23 @@ describe('x402 Worker discovery routes', () => {
     await expect((await dispatch('/sitemap.xml')).response.text()).resolves.toContain(
       `<loc>${HOST}/openapi.json</loc>`,
     );
+    await expect((await dispatch('/sitemap.xml')).response.text()).resolves.toContain(
+      `<loc>${HOST}/ledger</loc>`,
+    );
+  });
+
+  it('serves the verification ledger and injects the chatbot widget', async () => {
+    const { response } = await dispatch('/ledger', {}, { CHATBOT_WIDGET_ID: 'xcbot_test' });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('text/html');
+    const html = await response.text();
+    expect(html).toContain('Genesis Conductor Verification Ledger');
+    expect(html).toContain('0x69262A2D7c92c074729823B654fE7E4Cdb749747');
+    expect(html).toContain('data-gc-chatbot="1"');
+    expect(html).toContain('xcbot_test');
+
+    const alias = await dispatch('/verify', {}, { CHATBOT_WIDGET_ID: 'xcbot_test' });
+    expect(alias.response.status).toBe(200);
   });
 
   it('returns not found for unknown routes', async () => {
@@ -279,6 +298,31 @@ describe('x402 Worker facilitator health', () => {
     expect(fetchMock).toHaveBeenCalledWith(`${CDP_FACILITATOR}/supported`, expect.any(Object));
     expect(coinbaseMocks.createCorrelationHeader).toHaveBeenCalledTimes(1);
   });
+
+  it('pings ChainSafe /v2/supported when the Canton merchant is configured', async () => {
+    const fetchMock = stubFetch((input) => {
+      const url = String(input);
+      if (url.endsWith('/v2/supported')) return new Response('{"kinds":[]}', { status: 200 });
+      return new Response(null, { status: 204 });
+    });
+    const { response } = await dispatch('/health/facilitator', {}, {
+      FACILITATOR_URL: 'https://api-x402.chainsafe.io',
+      FACILITATOR_API_KEY: 'sk_live_test',
+      NETWORK_ID: 'canton:1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc',
+      MERCHANT_PARTY: 'xai::122015e809ced13c4b349b3c705d510c7e03ae1fcec76630c42070e25953b5782cdf',
+      AMULET_ADMIN: 'DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc',
+    });
+    expect(response.status).toBe(200);
+    await expect(responseJson<Record<string, unknown>>(response)).resolves.toMatchObject({
+      mode: 'public',
+      chainsafe: {
+        configured: true,
+        url: 'https://api-x402.chainsafe.io',
+        ok: true,
+      },
+    });
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain('https://api-x402.chainsafe.io/v2/supported');
+  });
 });
 
 describe('x402 Worker paid tier routes', () => {
@@ -324,6 +368,41 @@ describe('x402 Worker paid tier routes', () => {
     }
     expect(body.extensions.kind).toBe('discovery');
     expect(httpMocks.encodePaymentRequiredHeader).toHaveBeenCalledWith(expect.objectContaining({ x402Version: 2 }));
+  });
+
+  it('adds a Canton Amulet accept when the ChainSafe merchant is configured', async () => {
+    const { response } = await dispatch('/api/execute', { method: 'POST' }, {
+      FACILITATOR_URL: 'https://api-x402.chainsafe.io',
+      FACILITATOR_API_KEY: 'sk_live_test',
+      NETWORK_ID: 'canton:1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc',
+      MERCHANT_PARTY: 'xai::122015e809ced13c4b349b3c705d510c7e03ae1fcec76630c42070e25953b5782cdf',
+      AMULET_ADMIN: 'DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc',
+    });
+    const body = await responseJson<{ accepts: Array<Record<string, unknown>> }>(response);
+    expect(response.status).toBe(402);
+    const canton = body.accepts.find((a) => a.scheme === 'exact-canton');
+    expect(canton).toMatchObject({
+      network: 'canton:1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc',
+      maxAmountRequired: '0.01',
+      payTo: 'xai::122015e809ced13c4b349b3c705d510c7e03ae1fcec76630c42070e25953b5782cdf',
+      asset: { instrumentId: { id: 'Amulet', admin: 'DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc' } },
+    });
+    expect(typeof canton?.nonce).toBe('string');
+    expect(typeof canton?.validBefore).toBe('string');
+    expect(body.accepts[0]).toMatchObject({ amount: '10000', asset: USDC_BASE });
+  });
+
+  it('advertises $0.10 USDC for POST /api/sponsor-userop without a signature', async () => {
+    const { response } = await dispatch('/api/sponsor-userop', { method: 'POST' });
+    const body = await responseJson<{
+      accepts: Array<{ amount: string; asset: string; payTo: string }>;
+    }>(response);
+    expect(response.status).toBe(402);
+    expect(body.accepts[0]).toMatchObject({
+      amount: '100000',
+      asset: USDC_BASE,
+      payTo: VAULT,
+    });
   });
 
   it('keeps the Polygon leg in USDC even when the caller pays in ETH', async () => {
@@ -472,6 +551,7 @@ describe('x402 Worker paid tier routes', () => {
       body: JSON.stringify({ job: 'run' }),
     });
 
+
     expect(response.status).toBe(200);
     const paid = await responseJson<{
       success: boolean;
@@ -497,6 +577,56 @@ describe('x402 Worker paid tier routes', () => {
     // Settlement is now awaited and gates the response, not fire-and-forget via
     // waitUntil (see the settle-before-dispatch fix + settle-gate.test.ts).
     expect(ctx.waitUntil).not.toHaveBeenCalled();
+  });
+
+  it('settles $0.10 and returns a UserOp sponsorship quote without broadcasting', async () => {
+    stubFetch((input) => {
+      if (String(input).endsWith('/verify')) {
+        return Response.json({ isValid: true, payer: '0xPayer' });
+      }
+      return Response.json({ success: true, transaction: '0xSponsorSettle' });
+    });
+
+    const { response } = await dispatch('/api/sponsor-userop', {
+      method: 'POST',
+      headers: { 'PAYMENT-SIGNATURE': 'signed-payment', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userOp: {
+          sender: '0x1111111111111111111111111111111111111111',
+          nonce: '0',
+          initCode: '0x',
+          callData: '0x',
+          callGasLimit: '100000',
+          verificationGasLimit: '100000',
+          preVerificationGas: '50000',
+          maxFeePerGas: '1000',
+          maxPriorityFeePerGas: '100',
+          paymasterAndData: '0x',
+          signature: '0x',
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const paid = await responseJson<{
+      success: boolean;
+      tier: string;
+      charged_usd6: string;
+      settlement_tx: string;
+      sponsor: { sponsorship_status: string; broadcast: boolean; worker_signs: boolean; network: string };
+    }>(response);
+    expect(paid).toMatchObject({
+      success: true,
+      tier: 'sponsor-userop',
+      charged_usd6: '100000',
+      settlement_tx: '0xSponsorSettle',
+      sponsor: {
+        sponsorship_status: 'quoted_not_broadcast',
+        broadcast: false,
+        worker_signs: false,
+        network: 'eip155:8453',
+      },
+    });
   });
 
   it('fills accepted on a v2 payload so CDP verify sees the requirement awal omitted', async () => {

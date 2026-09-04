@@ -676,7 +676,7 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
     <section class="defer">
       <h2>Assumptions</h2>
       <ul>${snap.assumptions.map((a) => `<li>${escapeHtml(a)}</li>`).join('')}</ul>
-      <p><a href="/api/cashflow">JSON</a> · <a href="/hot-fund">Fund HOT (100 USDC Base)</a> · <a href="/">x402 tiers</a></p>
+      <p><a href="/api/cashflow">JSON</a> · <a href="/hot-fund">Fund HOT (100 USDC Base)</a> · <a href="/ledger">Verification ledger</a> · <a href="/">x402 tiers</a></p>
     </section>
   </main>
 </body>

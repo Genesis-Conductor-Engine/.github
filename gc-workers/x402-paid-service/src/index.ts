@@ -14,8 +14,21 @@ import {
 } from './lib/cashflow';
 import { probeAlchemySurfaces } from './lib/alchemy/client';
 import { buildHotFundHtml } from './lib/hot-fund';
+import { withChatbotWidget } from './lib/chatbot-embed';
+import { buildVerificationLedgerHtml } from './lib/verification-ledger';
 import { isAllowedAlchemyRpcUrl, isAllowedCdpBaseRpcUrl } from './lib/rpc-allow';
+import {
+  buildCantonAccept,
+  cantonPolicyAllows,
+  chainsafeFacilitatorPost,
+  chainsafeSupportedPing,
+  isCantonRequirements,
+  resolveChainSafeConfig,
+  tryDecodeCantonPaymentHeader,
+  type CantonAccept,
+} from './lib/chainsafe-facilitator';
 import { runRtptpa } from './lib/rtptpa';
+import { quoteSponsorship } from './lib/sponsor-userop';
 import type { SecretBindings } from './lib/secrets';
 import type {
   ExecutionContext,
@@ -104,6 +117,7 @@ interface Env {
   TIER_SPECIALIZED_USD6: string;
   TIER_FOUNDERS_USD6: string;
   TIER_SOURCE_EXCLUSIVE_USD6: string;
+  TIER_SPONSOR_USD6: string;
   // ETH pricing tiers (wei)
   TIER_DISCOVERY_ETH_WEI: string;
   TIER_PRO_ETH_WEI: string;
@@ -111,6 +125,11 @@ interface Env {
   TIER_SPECIALIZED_ETH_WEI: string;
   TIER_FOUNDERS_ETH_WEI: string;
   TIER_SOURCE_EXCLUSIVE_ETH_WEI: string;
+  TIER_SPONSOR_ETH_WEI: string;
+  /** Optional deployed WQFLOPPaymaster on Base. Quote-only if unset. */
+  PAYMASTER_ADDRESS?: string;
+  /** Wei cap for EntryPoint deposit used in sponsorship quotes. Default 0.05 ETH. */
+  PAYMASTER_DEPOSIT_CAP_WEI?: string;
   // Solana config
   SOLANA_USDC_MINT: string;
   SOLANA_RPC_URL: string;
@@ -136,10 +155,25 @@ interface Env {
   /** CDP Node Base mainnet RPC (api.developer.coinbase.com/rpc/v1/base/…). Secret. */
   CDP_BASE_RPC_URL?: string;
   ALCHEMY_API_KEY?: string;
+  /** Blockscout PRO API Bearer token (`proapi_…`). Secret. */
+  BLOCKSCOUT_PRO_API_KEY?: string;
+  /** Public Chatbase website-widget id. Client-side; not a Worker secret. */
+  CHATBOT_WIDGET_ID?: string;
   MAIN_WALLET?: string;
   GAS_ALERT_WEBHOOK?: string;
   /** Optional shared secret for POST /webhooks/treasury. Unset = accept unsigned events. */
   TREASURY_WEBHOOK_SECRET?: string;
+  /** ChainSafe Canton x402 merchant (public config). API key is a secret. */
+  FACILITATOR_URL?: string;
+  FACILITATOR_API_KEY?: string;
+  NETWORK_ID?: string;
+  MERCHANT_PARTY?: string;
+  AMULET_ADMIN?: string;
+  CHAINSAFE_FACILITATOR_URL?: string;
+  CHAINSAFE_FACILITATOR_API_KEY?: string;
+  CHAINSAFE_NETWORK_ID?: string;
+  CHAINSAFE_MERCHANT_PARTY?: string;
+  CHAINSAFE_AMULET_ADMIN?: string;
 }
 
 /** Prefer configured Solana RPC; fall back to Alchemy Solana if key present. */
@@ -237,6 +271,16 @@ const TIERS: TierConfig[] = [
     shopifyUrl: (e) => e.SHOPIFY_SOURCE_EXCLUSIVE_URL,
     shopifyVariantId: (e) => e.SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID,
   },
+  {
+    path: '/api/sponsor-userop',
+    getAmount: (e) => e.TIER_SPONSOR_USD6 || '100000',
+    getEthAmount: (e) => e.TIER_SPONSOR_ETH_WEI || '50000000000000',
+    description:
+      'ERC-4337 v0.6 UserOp sponsorship quote billed in USDC on Base. Worker never signs and never broadcasts; EntryPoint deposit is capped (default 0.05 ETH). Keywords: paymaster, erc-4337, userop, gas sponsorship, account abstraction, usdc gas.',
+    displayPrice: '$0.10',
+    asset: USDC_BASE,
+    ethAsset: 'native',
+  },
 ];
 
 // ── Solana USDC helpers ─────────────────────────────────────────────────────
@@ -333,7 +377,7 @@ async function verifySolanaUsdcTransfer(
  * ETH when they set X-PAYMENT-ASSET). `usdcAmount` is always the USDC-denominated
  * price, needed because the Polygon leg is USDC-only and cannot use an ETH amount.
  */
-function buildPaymentRequired(requestUrl: string, amount: string, payTo: string, asset: string, description: string, ethAmount?: string, usdcAmount: string = amount) {
+function buildPaymentRequired(requestUrl: string, amount: string, payTo: string, asset: string, description: string, ethAmount?: string, usdcAmount: string = amount, env?: Env) {
   // Bazaar discovery (v2 extensions field, official SDK)
   // `description` reaches the Bazaar listing. Without it the service renders
   // as a bare URL with no price or purpose, which is indistinguishable from a
@@ -368,7 +412,7 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
     },
   };
 
-  const accepts: Array<typeof primaryAccept> = [primaryAccept];
+  const accepts: Array<typeof primaryAccept | CantonAccept> = [primaryAccept];
 
   // Polygon USDC acceptance.
   //
@@ -405,6 +449,11 @@ function buildPaymentRequired(requestUrl: string, amount: string, payTo: string,
         version: '1',
       },
     });
+  }
+
+  const cantonCfg = env ? resolveChainSafeConfig(env) : undefined;
+  if (cantonCfg) {
+    accepts.push(buildCantonAccept(cantonCfg, usdcAmount, requestUrl, description));
   }
 
   return {
@@ -558,6 +607,12 @@ function payment402(paymentRequired: ReturnType<typeof buildPaymentRequired>, er
  * Posts to the configured facilitator.
  */
 async function facilitatorPost(endpoint: string, body: unknown, env: Env): Promise<Response> {
+  const envelope = (body && typeof body === 'object') ? body as Record<string, unknown> : {};
+  const cantonCfg = resolveChainSafeConfig(env);
+  if (cantonCfg && (endpoint === 'verify' || endpoint === 'settle') && isCantonRequirements(envelope.paymentRequirements)) {
+    return chainsafeFacilitatorPost(cantonCfg, endpoint, envelope.paymentPayload, envelope.paymentRequirements);
+  }
+
   const useCdp = Boolean(env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET);
 
   if (useCdp) {
@@ -729,7 +784,7 @@ async function handleTier(
   const amount = requestedEth ? ethAmount : primaryAmount;
   const asset = requestedEth ? 'native' : primaryAsset;
 
-  const paymentRequired = buildPaymentRequired(request.url, amount, payTo, asset, tier.description, ethAmount, primaryAmount);
+  const paymentRequired = buildPaymentRequired(request.url, amount, payTo, asset, tier.description, ethAmount, primaryAmount, env);
   const paymentRequirements = paymentRequired.accepts[0];
 
   const sigHeader = request.headers.get('PAYMENT-SIGNATURE') ?? request.headers.get('X-PAYMENT');
@@ -739,18 +794,28 @@ async function handleTier(
   }
 
   let paymentPayload: unknown;
-  try {
-    paymentPayload = normalizePaymentPayload(
-      decodePaymentSignatureHeader(sigHeader),
-      paymentRequirements,
+  let matchedRequirements: unknown;
+  const cantonDecoded = tryDecodeCantonPaymentHeader(sigHeader);
+  if (cantonDecoded) {
+    const advertised = paymentRequired.accepts.find(isCantonRequirements);
+    if (!advertised || !cantonPolicyAllows(cantonDecoded.requirements, advertised)) {
+      return payment402(paymentRequired, 'Canton payment does not match merchant policy');
+    }
+    paymentPayload = cantonDecoded.payload;
+    matchedRequirements = cantonDecoded.requirements;
+  } else {
+    try {
+      paymentPayload = normalizePaymentPayload(
+        decodePaymentSignatureHeader(sigHeader),
+        paymentRequirements,
+      );
+    } catch {
+      return Response.json({ error: 'Invalid payment signature' }, { status: 400 });
+    }
+    matchedRequirements = slimPaymentRequirements(
+      matchAdvertisedRequirements(paymentRequired.accepts, paymentPayload),
     );
-  } catch {
-    return Response.json({ error: 'Invalid payment signature' }, { status: 400 });
   }
-
-  const matchedRequirements = slimPaymentRequirements(
-    matchAdvertisedRequirements(paymentRequired.accepts, paymentPayload),
-  );
 
   let verifyResult: { isValid: boolean; invalidReason?: string; invalidMessage?: string; payer?: string };
   try {
@@ -830,6 +895,7 @@ async function handleTier(
 
   const deliverRtptpa = tier.path === '/api/execute' || tier.path === '/api/inference';
   const rtptpa = deliverRtptpa ? await runRtptpa(body) : undefined;
+  const sponsor = tier.path === '/api/sponsor-userop' ? quoteSponsorship(body, env) : undefined;
 
   const result = tier.shopifyUrl
     ? {
@@ -849,6 +915,7 @@ async function handleTier(
         charged_eth_wei: requestedEth ? amount : '0',
         payment_asset: requestedEth ? 'ETH' : 'USDC',
         ...(rtptpa ? { rtptpa } : {}),
+        ...(sponsor ? { sponsor } : {}),
       };
 
   return Response.json({
@@ -856,6 +923,7 @@ async function handleTier(
     payer: payerAddress,
     settlement_tx: settlementTx,
     ...(fulfillment ?? {}),
+    ...(sponsor ? { sponsor } : {}),
   });
 }
 
@@ -899,6 +967,12 @@ function buildX402Discovery(env: Env, hostname: string) {
       solanaRpc: resolveSolanaRpcUrl(env).includes('alchemy.com') ? 'alchemy' : 'public-or-custom',
     },
     facilitator: (env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) ? CDP_FACILITATOR : PUBLIC_FACILITATOR,
+    canton: (() => {
+      const cfg = resolveChainSafeConfig(env);
+      return cfg
+        ? { facilitator: cfg.url, network: cfg.network, payTo: cfg.payTo, asset: 'Amulet', scheme: 'exact-canton' }
+        : { configured: false };
+    })(),
     discovery: {
       x402: `https://${hostname}/.well-known/x402`,
       openapi: `https://${hostname}/openapi.json`,
@@ -949,7 +1023,7 @@ function buildOpenAPI(hostname: string) {
     info: {
       title: 'Genesis Conductor x402 Tiered Service',
       version: '2.1.0',
-      description: 'Six-tier x402 paid API on Base. Supports USDC, ETH, and Solana USDC payments.',
+      description: `${TIERS.length}-tier x402 paid API on Base. Supports USDC, ETH, and Solana USDC payments.`,
     },
     servers: [{ url: `https://${hostname}` }],
     paths: {
@@ -968,12 +1042,13 @@ function buildLlmsTxt(hostname: string) {
 
   return `# Genesis Conductor x402 Tiered Service
 
-> Paid API using the x402 protocol on Base + Polygon. Six tiers from $0.01 to $9,999.
+> Paid API using the x402 protocol on Base + Polygon. ${TIERS.length} tiers from $0.01 to $9,999, including UserOp sponsorship ($0.10).
 
 ## Overview
 - **Networks**: Base mainnet (eip155:8453), Polygon mainnet (eip155:137)
 - **Payment tokens**: USDC, ETH (native)
 - **Facilitator**: Coinbase CDP facilitator (${CDP_FACILITATOR}) — production-grade settlement via Coinbase Developer Platform, handles high-value tiers ($4,999 / $9,999). Falls back to the public x402.org facilitator when CDP keys are absent.
+- **Canton (ChainSafe)**: optional extra accept on each paid tier via \`https://api-x402.chainsafe.io/v2/{verify,settle}\`. Sticker USD maps 1:1 into Canton Coin (Amulet) until a CC/USD oracle is wired. Requires FACILITATOR_API_KEY + MERCHANT_PARTY.
 
 ## Payment Flow
 1. Call any \`POST /api/*\` endpoint without a payment header
@@ -992,6 +1067,7 @@ ${tierDocs}
 - x402 spec: https://${hostname}/.well-known/x402
 - MCP: https://${hostname}/.well-known/mcp.json
 - Cashflow JSON: https://${hostname}/api/cashflow
+- Verification ledger: https://${hostname}/ledger
 - OpenAPI: https://${hostname}/openapi.json
 - Facilitator health: https://${hostname}/health/facilitator
 `;
@@ -1107,16 +1183,16 @@ export default {
       const html = `<!DOCTYPE html><html lang="en"><head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Genesis Conductor x402 — Tiered Paid API</title>
-  <meta name="description" content="Six-tier x402 paid service on Base. Pay USDC, ETH, or Solana USDC.">
+  <meta name="description" content="${TIERS.length}-tier x402 paid service on Base. Pay USDC, ETH, or Solana USDC.">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebAPI","name":"Genesis Conductor x402 Tiered Service","url":"https://${hostname}"}</script>
 </head><body>
   <h1>Genesis Conductor x402 Tiered Service</h1>
-  <p>Six tiers of paid API access — pay <strong>USDC</strong> or <strong>ETH</strong> on Base, or <strong>USDC</strong> on Solana.</p>
+  <p>${TIERS.length} tiers of paid API access — pay <strong>USDC</strong> or <strong>ETH</strong> on Base, or <strong>USDC</strong> on Solana.</p>
   <table border="1" cellpadding="4"><thead><tr><th>Endpoint</th><th>Price</th><th>Description</th></tr></thead>
   <tbody>${tierRows}</tbody></table>
-  <p>See <a href="/llms.txt">/llms.txt</a>, <a href="/.well-known/x402">/.well-known/x402</a>, or the <a href="/cashflow">internal cashflow dashboard</a>.</p>
+  <p>See <a href="/llms.txt">/llms.txt</a>, <a href="/.well-known/x402">/.well-known/x402</a>, the <a href="/cashflow">internal cashflow dashboard</a>, or the <a href="/ledger">verification ledger</a>.</p>
 </body></html>`;
-      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      return new Response(withChatbotWidget(html, env.CHATBOT_WIDGET_ID), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
     if (pathname === '/health') {
@@ -1129,18 +1205,31 @@ export default {
         solana_rpc: resolveSolanaRpcUrl(env).includes('alchemy.com') ? 'alchemy' : 'configured',
         shopify_store: env.SHOPIFY_STORE_DOMAIN || 'shop.genesisconductor.io',
         alchemy_base_rpc: Boolean(env.ALCHEMY_BASE_RPC_URL),
+        blockscout_pro_api: Boolean(env.BLOCKSCOUT_PRO_API_KEY),
         facilitator: (env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) ? 'cdp' : 'public',
         integrations: {
           shopify: true,
           alchemy: Boolean(env.ALCHEMY_BASE_RPC_URL || env.ALCHEMY_API_KEY),
+          blockscout: Boolean(env.BLOCKSCOUT_PRO_API_KEY),
+          chatbot: Boolean(env.CHATBOT_WIDGET_ID),
+          chainsafe: Boolean(resolveChainSafeConfig(env)),
           openclaw: true,
           cloudflare: true,
         },
       });
     }
 
+    if ((pathname === '/ledger' || pathname === '/verify') && request.method === 'GET') {
+      return new Response(buildVerificationLedgerHtml(env.CHATBOT_WIDGET_ID), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+        },
+      });
+    }
+
     if (pathname === '/hot-fund' && request.method === 'GET') {
-      return new Response(buildHotFundHtml(), {
+      return new Response(withChatbotWidget(buildHotFundHtml(), env.CHATBOT_WIDGET_ID), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'public, max-age=60',
@@ -1166,7 +1255,7 @@ export default {
           force ? undefined : (p) => ctx.waitUntil(p),
           force,
         );
-        return new Response(buildCashflowHtml(snap, hostname), {
+        return new Response(withChatbotWidget(buildCashflowHtml(snap, hostname), env.CHATBOT_WIDGET_ID), {
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'public, max-age=15, stale-while-revalidate=120',
@@ -1176,7 +1265,7 @@ export default {
       } catch (e) {
         const cached = await loadSnapshot(cashflowKv(env));
         if (cached) {
-          return new Response(buildCashflowHtml({ ...cached, freshness: 'cached' }, hostname), {
+          return new Response(withChatbotWidget(buildCashflowHtml({ ...cached, freshness: 'cached' }, hostname), env.CHATBOT_WIDGET_ID), {
             headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
           });
         }
@@ -1300,7 +1389,18 @@ export default {
       } catch (e) {
         pingError = String(e);
       }
-      return Response.json({ mode, facilitator: facilitatorUrl, ok, ...(pingError ? { error: pingError } : {}), eth_pricing_enabled: ETH_PRICING_ENABLED(env) }, {
+      const cantonCfg = resolveChainSafeConfig(env);
+      const chainsafe = cantonCfg
+        ? { configured: true, url: cantonCfg.url, network: cantonCfg.network, payTo: cantonCfg.payTo, ...(await chainsafeSupportedPing(cantonCfg)) }
+        : { configured: false };
+      return Response.json({
+        mode,
+        facilitator: facilitatorUrl,
+        ok,
+        ...(pingError ? { error: pingError } : {}),
+        eth_pricing_enabled: ETH_PRICING_ENABLED(env),
+        chainsafe,
+      }, {
         status: ok ? 200 : 502,
       });
     }
@@ -1328,7 +1428,7 @@ export default {
         '@context': 'https://schema.org',
         '@type': 'WebAPI',
         name: 'Genesis Conductor x402 Tiered Service',
-        description: 'Six-tier x402 paid API on Base. Supports USDC, ETH, and Solana USDC payments.',
+        description: `${TIERS.length}-tier x402 paid API on Base. Supports USDC, ETH, and Solana USDC payments.`,
         url: `https://${hostname}`,
         documentation: `https://${hostname}/llms.txt`,
       }, { headers: { 'Cache-Control': 'public, max-age=3600' } });
@@ -1339,8 +1439,8 @@ export default {
         schema_version: 'v1',
         name_for_human: 'Genesis Conductor x402',
         name_for_model: 'genesis_conductor_x402',
-        description_for_human: 'Six-tier paid API using USDC, ETH, and Solana USDC micropayments on Base',
-        description_for_model: 'Six tiers of paid API access ($0.01–$9,999). Supports USDC, ETH, and Solana USDC. Call /.well-known/x402 first, then retry with PAYMENT-SIGNATURE or X-SOLANA-SIGNATURE header.',
+        description_for_human: `${TIERS.length}-tier paid API using USDC, ETH, and Solana USDC micropayments on Base`,
+        description_for_model: `${TIERS.length} tiers of paid API access ($0.01–$9,999, plus $0.10 UserOp sponsorship). Supports USDC, ETH, and Solana USDC. Call /.well-known/x402 first, then retry with PAYMENT-SIGNATURE or X-SOLANA-SIGNATURE header.`,
         auth: { type: 'none' },
         api: { type: 'openapi', url: `https://${hostname}/openapi.json` },
         contact_email: 'api@genesisconductor.io',
@@ -1376,7 +1476,7 @@ export default {
 
     if (pathname === '/sitemap.xml') {
       const base = `https://${hostname}`;
-      const urls = ['/', '/health', '/cashflow', '/hot-fund', '/api/cashflow', '/.well-known/x402', '/.well-known/mcp.json', '/openapi.json', '/llms.txt']
+      const urls = ['/', '/health', '/cashflow', '/hot-fund', '/ledger', '/api/cashflow', '/.well-known/x402', '/.well-known/mcp.json', '/openapi.json', '/llms.txt']
         .map((p) => `  <url><loc>${base}${p}</loc></url>`)
         .join('\n');
       return new Response(
@@ -1389,7 +1489,7 @@ export default {
     const tier = TIERS.find((t) => t.path === pathname);
     if (tier) {
       if (request.method !== 'POST') {
-        const paymentRequired = buildPaymentRequired(request.url, tier.getAmount(env), env.VAULT_ADDRESS, tier.asset || env.USDC_ADDRESS || USDC_BASE, tier.description, tier.getEthAmount(env));
+        const paymentRequired = buildPaymentRequired(request.url, tier.getAmount(env), env.VAULT_ADDRESS, tier.asset || env.USDC_ADDRESS || USDC_BASE, tier.description, tier.getEthAmount(env), tier.getAmount(env), env);
         return payment402(paymentRequired);
       }
       
@@ -1419,6 +1519,7 @@ export default {
         );
         
         const body = await request.json().catch(() => ({}));
+        const sponsor = tier.path === '/api/sponsor-userop' ? quoteSponsorship(body, env) : undefined;
         return Response.json({
           success: true,
           tier: tier.path.replace('/api/', ''),
@@ -1429,6 +1530,7 @@ export default {
           charged_eth_wei: '0',
           payment_asset: 'USDC_SOLANA',
           solana_signature: solanaSignature,
+          ...(sponsor ? { sponsor } : {}),
         });
       }
       

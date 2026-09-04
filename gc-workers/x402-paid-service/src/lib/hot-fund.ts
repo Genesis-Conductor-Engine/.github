@@ -60,7 +60,7 @@ export function buildHotFundHtml(): string {
       <li>To: HOT ${HOT_ADDRESS}</li>
       <li>Token: Base native USDC ${USDC_BASE}</li>
     </ul>
-    <p><a href="/cashflow">Back to cashflow</a></p>
+    <p><a href="/cashflow">Back to cashflow</a> · <a href="/ledger">Verification ledger</a></p>
   </main>
   <script type="module">
     const HOT = ${JSON.stringify(HOT_ADDRESS)};

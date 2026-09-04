@@ -55,6 +55,18 @@ const ENV_KEYS = [
   'CDP_API_KEY_SECRET',
   'ALCHEMY_BASE_RPC_URL',
   'ALCHEMY_API_KEY',
+  'BLOCKSCOUT_PRO_API_KEY',
+  'CHATBOT_WIDGET_ID',
+  'FACILITATOR_URL',
+  'FACILITATOR_API_KEY',
+  'NETWORK_ID',
+  'MERCHANT_PARTY',
+  'AMULET_ADMIN',
+  'CHAINSAFE_FACILITATOR_URL',
+  'CHAINSAFE_FACILITATOR_API_KEY',
+  'CHAINSAFE_NETWORK_ID',
+  'CHAINSAFE_MERCHANT_PARTY',
+  'CHAINSAFE_AMULET_ADMIN',
   'BASE_RPC_URL',
   'CDP_BASE_RPC_URL',
   'MAIN_WALLET',
@@ -150,7 +162,7 @@ async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? '8080');
   const pending: Promise<unknown>[] = [];
 
-  const server = createServer((req, res) => {
+  const server = createServer({ maxHeaderSize: 1024 * 1024 }, (req, res) => {
     void (async () => {
       try {
         const body = await readBody(req);
