@@ -1,5 +1,15 @@
 # Genesis Conductor — Copilot Instructions
 
+## Session operating rules (all harnesses)
+
+These apply to Copilot, Claude, Grok, Codex, Cursor, Gemini, OpenCode, and OpenClaw. Canonical copy: `~/.agents/session-operating-rules.md`.
+
+- **Truthfulness:** Never report a finding from a still-running command or an unverified tool response. Empty MCP/integration confirmations are FAILED — re-run or write the file directly, and say so. Never invent URLs, citations, or contract addresses; unknown sources get `[UNVERIFIED]`.
+- **Disk preflight:** Before long builds, package installs, or tests: `df -h /` and `df -h /tmp` (plus `df -h /private/tmp` on macOS). Under 5GB free: `npm cache clean --force`, prune Docker, report before proceeding.
+- **Async I/O:** Every session is non-blocking. Background long commands; never poll status tools in a loop; every network/subprocess call has a timeout. Checkpoint findings to disk after each phase.
+- **Git:** Separate `-m` flags for multi-line commits. Run `git log origin/main..HEAD --oneline` before committing — STOP if the branch carries unrelated commits. Never commit PII, clearance, or credentials.
+- **Contracts:** Foundry verify with relative source paths and matching compiler settings. Query the explorer API directly; do not jq-grep verification status. Base 8453 is the only chain with live deployments.
+
 ## Branch Protection Awareness
 
 Some repos (Check-Your-Score, Genesis-Conductor) require signed commits. Before pushing:

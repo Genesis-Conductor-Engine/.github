@@ -4,6 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **`AGENTS.md` (repo root) is the canonical, reconciled workspace map** — tracked-surface table, on-chain addresses, diamondnode paths, off-repo Desktop projects, GenesisDrive path gotchas. Read it for anything not covered below. This file covers only what is load-bearing and easy to get wrong.
 
+Session operating rules below are **harness-agnostic** (Claude, Grok, Codex, Cursor, Gemini, Copilot, OpenCode, OpenClaw). Same text lives in `AGENTS.md` and `~/.agents/session-operating-rules.md`.
+
+## Truthfulness Over Optimism
+
+Never report a finding from a still-running command or an unverified tool response. If an MCP or integration tool returns an empty confirmation, treat it as FAILED — re-run or fall back to a direct file write, and say so explicitly. Never invent URLs, citations, or contract addresses; if a source is unknown, mark it `[UNVERIFIED]`.
+
 ## This repo is the home directory
 
 `~/` itself is the git repo, with a **deny-all-then-allow** `.gitignore` (`/*`, then `!` allowlist entries). Consequences:
@@ -12,6 +18,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Only `gc-workers/x402-paid-service/`, `gc-crew-mcp-bridge/`, and `intent-surface/` are allowlisted under `gc-workers/`. Dozens of sibling directories are local-only — edit freely, but git does not see them.
 - Most work lives **outside** the tracked surface (`~/Desktop/*`, other clones, diamondnode). Absence from `git ls-files` does not mean absence from the machine.
 - Stage explicitly. A broad `git add .` in a home-directory repo is how credentials leak; the allowlist is the only thing standing between you and that.
+
+## Disk & Environment Preflight
+
+Before any long build, package install, or test run: check free disk with `df -h /` and `df -h /tmp`. If `/private/tmp` exists (macOS), also check `df -h /private/tmp`. If under 5GB free, run `npm cache clean --force`, prune Docker, and report before proceeding. ENOSPC has silently broken shell and file-edit tools in past sessions.
 
 ## Commands
 
@@ -75,6 +85,12 @@ Settlement requires live `CDP_API_KEY_ID` + `CDP_API_KEY_SECRET` when `X402_FACI
 - NemoClaw on this Mac is Darwin + no sandbox — do not `onboard` (diamondnode H(s)=OFFLOAD)
 - Mixed branch `chore/gitignore-gemini-gha-creds` — cherry-pick cashflow commits; do not merge the whole branch to main
 
+## Blockchain / Contracts
+
+### Contract Verification (Foundry/Base)
+
+Always verify with relative source paths and matching compiler settings; absolute paths cause metadata-hash mismatches. Never use jq-based greps to determine verification status — query the explorer API directly and confirm per-contract. Base 8453 is the only chain with live deployments.
+
 ## Cloudflare
 
 Reuse, never recreate: KV `API_KEYS` = `4c2c5ef0988742cc8fb98102681d9986`, D1 `ambient-db` = `56fc54e4-a04c-4f6d-b0af-048bdfa777d8`. Do not create new KV/D1 bindings without explicit approval.
@@ -82,6 +98,22 @@ Reuse, never recreate: KV `API_KEYS` = `4c2c5ef0988742cc8fb98102681d9986`, D1 `a
 After deploying anything needing secrets, use `wrangler secret put NAME` — never dummy values, never skip the auth check to make a deploy pass.
 
 Per `copilot-instructions.md`, Workers ship SEO/discovery files in `public/`: `llms.txt`, `robots.txt`, `sitemap.xml`, `.well-known/mcp.json`, `.well-known/a2a.json`.
+
+## Async / non-blocking I/O
+
+Every session is asynchronous. Never block the conversation, the event loop, or a parent agent on I/O.
+
+- Start long commands (installs, builds, tests, deploys, SSH, compiles, downloads) in the background and keep working. Do not wait on them in the foreground.
+- Never poll status tools in a loop. Use one sleep-then-check, or a single bounded timeout. Subagents must write their outputs to disk before returning.
+- Every network and subprocess call must have a timeout. No unbounded `sleep`/retry loops, no blocking `subprocess` without a bound, no `curl` without `--max-time`.
+- If a foreground command is still running after a few seconds, background it and continue.
+- Checkpoint partial findings to disk after each phase so a session-limit hit does not lose work.
+
+## Git Conventions
+
+- Use separate `-m` flags for multi-line commit messages; heredoc/multi-line strings have failed repeatedly.
+- Before committing, run `git log origin/main..HEAD --oneline` — if the branch carries unrelated commits, STOP and report rather than pushing.
+- Scope commits narrowly; never commit files containing PII, clearance, or credential content.
 
 ## Conventions
 
