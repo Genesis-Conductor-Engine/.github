@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   FLEET,
+  HOT_X402,
+  LIQUIDITY_RAILS,
+  METAMASK_GAS_STATION_3,
   SETTLEMENT_USDC_CHAINS,
   SETTLEMENT_WINDOW,
   SNAPSHOT_KEY,
@@ -38,6 +41,24 @@ describe('settlement multichain USDC', () => {
       { usdc: 54437.421675 },
     ])).toBeCloseTo(214952.391995, 6);
     expect(sumChainUsdc([{ usdc: Number.NaN }, { usdc: 1 }])).toBe(1);
+  });
+});
+
+describe('liquidity rails', () => {
+  it('treats Hyperliquid Place as mainnet-only monetization leverage into HOT', () => {
+    expect(HOT_X402).toBe('0x60C4499870f115664d7FfD8411b023DBEf3377d9');
+    expect(FLEET.find((w) => w.id === 'hot')?.address).toBe(HOT_X402);
+    expect(FLEET.find((w) => w.id === 'payto')?.address).toBe(HOT_X402);
+    const hl = LIQUIDITY_RAILS.find((r) => r.id === 'hyperliquid');
+    expect(hl).toMatchObject({
+      network: 'hyperliquid-mainnet',
+      sink: HOT_X402,
+      status: 'mainnet_only',
+    });
+    expect(hl?.note).toMatch(/Never testnet/i);
+    expect(LIQUIDITY_RAILS.every((r) => !/testnet/i.test(r.network))).toBe(true);
+    expect(FLEET.every((w) => w.address.toLowerCase() !== METAMASK_GAS_STATION_3.toLowerCase())).toBe(true);
+    expect(LIQUIDITY_RAILS.every((r) => r.sink.toLowerCase() !== METAMASK_GAS_STATION_3.toLowerCase())).toBe(true);
   });
 });
 
@@ -85,6 +106,65 @@ describe('parseWebhook', () => {
       note: 'alchemy invoice placeholder',
     });
     expect(events).toEqual([expect.objectContaining({ direction: 'out', amount: 25, source: 'manual' })]);
+  });
+
+  it('accepts Hyperliquid Place fills as cashflow accumulation events', () => {
+    const events = parseWebhook({
+      source: 'hyperliquid',
+      direction: 'in',
+      asset: 'USDC',
+      amount: 12.5,
+      note: 'hl_place_order realized pnl sweep toward HOT',
+    });
+    expect(events).toEqual([expect.objectContaining({
+      source: 'hyperliquid',
+      direction: 'in',
+      amount: 12.5,
+      asset: 'USDC',
+      to: HOT_X402,
+    })]);
+  });
+
+  it('does not ledger MetaMask Gas Station 3 airdrop spam as cashflow', () => {
+    expect(parseWebhook({
+      type: 'ADDRESS_ACTIVITY',
+      event: {
+        activity: [
+          {
+            fromAddress: '0xdd22f4729a05456c56e3e4fab79877b192b827f2',
+            toAddress: METAMASK_GAS_STATION_3,
+            value: 9,
+            asset: 'SENT',
+            hash: '0x078b02f3753a3a3a630a86d614d64c9f9f5b5a5acce205784d72917a9a0b1467',
+            category: 'token',
+          },
+        ],
+      },
+    })).toEqual([]);
+    expect(parseWebhook({
+      source: 'airdrop',
+      direction: 'in',
+      asset: 'LAUNCH',
+      amount: 111,
+      to: METAMASK_GAS_STATION_3,
+    })).toEqual([]);
+  });
+
+  it('rejects Hyperliquid testnet ledger payloads', () => {
+    expect(parseWebhook({
+      source: 'hyperliquid',
+      direction: 'in',
+      asset: 'USDC',
+      amount: 12.5,
+      network: 'testnet',
+    })).toEqual([]);
+    expect(parseWebhook({
+      source: 'hyperliquid',
+      direction: 'in',
+      asset: 'USDC',
+      amount: 1,
+      HYPELENS_NET: 'testnet',
+    })).toEqual([]);
   });
 
   it('records gas_low alerts from the existing cron webhook', () => {
@@ -319,5 +399,31 @@ describe('buildCashflowHtml LCP', () => {
     expect(html).toContain('Base USDC');
     expect(html).toContain('Arbitrum USDC');
     expect(html).toContain('106,863.87');
+  });
+
+  it('renders Hyperliquid Place as a mainnet liquidity rail into HOT', () => {
+    const html = buildCashflowHtml({
+      generated_at: '2026-09-07T00:00:00.000Z',
+      eth_usd: 1800,
+      wallets: [],
+      priced_usd: 1,
+      working_capital_usdc: 1,
+      window: SETTLEMENT_WINDOW,
+      roi: computeRoi(1),
+      vendors: [...VENDORS],
+      ledger: [],
+      assumptions: ['Hyperliquid Place is mainnet-only'],
+      freshness: 'live',
+      marks: {
+        eth_source: 'fallback',
+        wqflop: { priced: false, price_usd: null, liquidity_usd: null, pools: 0, note: 'n/a' },
+      },
+    }, 'cashflow.genesisconductor.io');
+    expect(html).toContain('Liquidity rails (monetization leverage)');
+    expect(html).toContain('Hyperliquid Place');
+    expect(html).toContain('hyperliquid-mainnet');
+    expect(html).toContain(HOT_X402);
+    expect(html).toContain('source=hyperliquid');
+    expect(html).not.toContain('hyperliquid-testnet');
   });
 });

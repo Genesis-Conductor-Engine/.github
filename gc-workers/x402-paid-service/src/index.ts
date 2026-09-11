@@ -28,6 +28,7 @@ import {
   type CantonAccept,
 } from './lib/chainsafe-facilitator';
 import { runRtptpa } from './lib/rtptpa';
+import { runAttestation } from './lib/attestation';
 import { quoteSponsorship } from './lib/sponsor-userop';
 import type { SecretBindings } from './lib/secrets';
 import type {
@@ -118,6 +119,14 @@ interface Env {
   TIER_FOUNDERS_USD6: string;
   TIER_SOURCE_EXCLUSIVE_USD6: string;
   TIER_SPONSOR_USD6: string;
+  /** Optional live SKUs (plain_text on Worker; 13-stream $0.05 / $0.10). */
+  TIER_MARKETS_USD6?: string;
+  TIER_POSTMAN_USD6?: string;
+  /** Optional agent-trust attestation SKUs ($0.10 quick / $2.50 audit). */
+  TIER_ATTEST_QUICK_USD6?: string;
+  TIER_ATTEST_FULL_USD6?: string;
+  TIER_ATTEST_QUICK_ETH_WEI?: string;
+  TIER_ATTEST_FULL_ETH_WEI?: string;
   // ETH pricing tiers (wei)
   TIER_DISCOVERY_ETH_WEI: string;
   TIER_PRO_ETH_WEI: string;
@@ -126,6 +135,8 @@ interface Env {
   TIER_FOUNDERS_ETH_WEI: string;
   TIER_SOURCE_EXCLUSIVE_ETH_WEI: string;
   TIER_SPONSOR_ETH_WEI: string;
+  TIER_MARKETS_ETH_WEI?: string;
+  TIER_POSTMAN_ETH_WEI?: string;
   /** Optional deployed WQFLOPPaymaster on Base. Quote-only if unset. */
   PAYMASTER_ADDRESS?: string;
   /** Wei cap for EntryPoint deposit used in sponsorship quotes. Default 0.05 ETH. */
@@ -214,6 +225,46 @@ const TIERS: TierConfig[] = [
     description:
       'x402 settlement smoke test + RTPTPA-QCG control_spec. One-cent Base USDC call returns attested NV-center arbitration (relative-tensor power-tower). Keywords: x402 test, rtpTPA, quantum control genesis, micropayment, penny call.',
     displayPrice: '$0.01',
+    asset: USDC_BASE,
+    ethAsset: 'native',
+  },
+  {
+    path: '/api/markets',
+    getAmount: (e) => e.TIER_MARKETS_USD6 || '50000',
+    getEthAmount: (e) => e.TIER_MARKETS_ETH_WEI || '',
+    description:
+      'On-chain market snapshot billed per call in USDC — pool/ticker style quotes for agents that need a cheap Dex-adjacent read without a data-vendor key. Keywords: market data, ticker, pool quote, dex, price feed, agent market, micropayment.',
+    displayPrice: '$0.05',
+    asset: USDC_BASE,
+    ethAsset: 'native',
+  },
+  {
+    path: '/api/postman',
+    getAmount: (e) => e.TIER_POSTMAN_USD6 || '100000',
+    getEthAmount: (e) => e.TIER_POSTMAN_ETH_WEI || '',
+    description:
+      'Postman collection / HTTP fixture runner billed per call in USDC — agents pay to execute a stored request collection without a Postman account. Keywords: postman, http collection, api test, fixture runner, agent qa, pay per run.',
+    displayPrice: '$0.10',
+    asset: USDC_BASE,
+    ethAsset: 'native',
+  },
+  {
+    path: '/api/attest',
+    getAmount: (e) => e.TIER_ATTEST_QUICK_USD6 || '100000',
+    getEthAmount: (e) => e.TIER_ATTEST_QUICK_ETH_WEI || '',
+    description:
+      'Agent Trust quick attestation billed per call in USDC — probe any endpoint for liveness, https, latency, and a parsed x402 402 payment rail (scheme, network, price), returned as a structured A–D graded attestation. No API key, no account. Keywords: agent trust, endpoint attestation, x402 verification, kya, delivery proof, liveness, payment rail check, agent due diligence.',
+    displayPrice: '$0.10',
+    asset: USDC_BASE,
+    ethAsset: 'native',
+  },
+  {
+    path: '/api/attest-audit',
+    getAmount: (e) => e.TIER_ATTEST_FULL_USD6 || '2500000',
+    getEthAmount: (e) => e.TIER_ATTEST_FULL_ETH_WEI || '',
+    description:
+      'Agent Trust full audit billed per call in USDC — deep endpoint attestation: repeated liveness probes with latency-consistency drift checks, response-shape verification, and full x402 payment-rail decomposition (scheme, network, asset, payTo, price). Structured A–D graded attestation for agent procurement and counterparty risk. Keywords: agent trust audit, endpoint attestation, kya, kyb, due diligence, counterparty risk, x402 verification, procurement.',
+    displayPrice: '$2.50',
     asset: USDC_BASE,
     ethAsset: 'native',
   },
@@ -895,6 +946,8 @@ async function handleTier(
 
   const deliverRtptpa = tier.path === '/api/execute' || tier.path === '/api/inference';
   const rtptpa = deliverRtptpa ? await runRtptpa(body) : undefined;
+  const deliverAttest = tier.path === '/api/attest' || tier.path === '/api/attest-audit';
+  const attestation = deliverAttest ? await runAttestation(body) : undefined;
   const sponsor = tier.path === '/api/sponsor-userop' ? quoteSponsorship(body, env) : undefined;
 
   const result = tier.shopifyUrl
@@ -909,12 +962,13 @@ async function handleTier(
     : {
         success: true,
         tier: tier.path.replace('/api/', ''),
-        result: deliverRtptpa ? rtptpa : tier.description,
+        result: deliverRtptpa ? rtptpa : deliverAttest ? attestation : tier.description,
         input: body,
         charged_usd6: requestedEth ? '0' : amount,
         charged_eth_wei: requestedEth ? amount : '0',
         payment_asset: requestedEth ? 'ETH' : 'USDC',
         ...(rtptpa ? { rtptpa } : {}),
+        ...(attestation ? { attestation } : {}),
         ...(sponsor ? { sponsor } : {}),
       };
 
@@ -938,7 +992,7 @@ function buildX402Discovery(env: Env, hostname: string) {
       path: t.path,
       method: 'POST',
       price: { amount: primaryAmount, currency: 'USDC', decimals: 6 },
-      ethPrice: ETH_SETTLEMENT_ENABLED ? { amount: ethAmount, currency: 'ETH', decimals: 18 } : undefined,
+      ethPrice: ETH_SETTLEMENT_ENABLED && ethAmount ? { amount: ethAmount, currency: 'ETH', decimals: 18 } : undefined,
       displayPrice: t.displayPrice,
       description: t.description,
       network: NETWORK,
@@ -1458,6 +1512,7 @@ export default {
           { name: 'read_cashflow', description: `GET https://${hostname}/api/cashflow` },
           { name: 'post_treasury_webhook', description: `POST https://${hostname}/webhooks/treasury` },
           { name: 'negotiate_x402_offer', description: 'Dynamic high-to-low x402 offer arbitration (proprietary IP of Genesis Conductor/Kovach JV). Maximizes payment per client. Use with ralphloop 10x profit flywheel.' },
+          { name: 'attest_endpoint', description: `POST https://${hostname}/api/attest ($0.10) or /api/attest-audit ($2.50) with {"url": "..."} — graded agent-trust attestation of any endpoint's liveness and x402 payment rail.` },
         ],
       }, { headers: { 'Cache-Control': 'public, max-age=3600' } });
     }

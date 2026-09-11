@@ -1,14 +1,15 @@
 {
   "name": "Yennefer x402 Paid Service — Tiered (Genesis Conductor)",
-  "description": "Tiered x402 paid API on Base + Polygon mainnet. Seven tiers from $0.01 discovery calls to $9,999 agent-to-agent source-exclusive checkout, plus $0.10 ERC-4337 UserOp sponsorship quotes. USDC settlement via the Coinbase CDP facilitator (production-grade, EIP-3009). Agent-native: pay-per-call, no accounts or API keys. Covers generic execution, premium API access, AI inference, specialized data, licensing, plugin fulfillment, and gas sponsorship quotes.",
-  "version": "2.1",
-  "url": "https://x402-paid-service.iholt.workers.dev",
+  "description": "Tiered x402 paid API on Base + Polygon mainnet plus Canton (ChainSafe exact-canton / Amulet). Nine SKUs from $0.01 discovery to $9,999 source-exclusive checkout, plus $0.05 markets, $0.10 Postman, $0.10 agent-trust quick attestation, $2.50 agent-trust full audit, and $0.10 ERC-4337 UserOp sponsorship. EVM USDC settles via Coinbase CDP (EIP-3009). Canton Coin settles via api-x402.chainsafe.io. Agent-native: pay-per-call, no accounts or API keys.",
+  "version": "2.3",
+  "url": "https://cashflow.genesisconductor.io",
   "provider": "Genesis Conductor / Yennefer",
   "protocol": "x402",
   "protocolVersion": "2.0",
   "networks": [
     "eip155:8453",
-    "eip155:137"
+    "eip155:137",
+    "canton:1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc"
   ],
   "network": "eip155:8453",
   "chainId": 8453,
@@ -32,6 +33,13 @@
   "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
   "facilitator": "https://api.cdp.coinbase.com/platform/v2/x402",
   "facilitatorMode": "cdp",
+  "canton": {
+    "facilitator": "https://api-x402.chainsafe.io",
+    "network": "canton:1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc",
+    "payTo": "xai::122015e809ced13c4b349b3c705d510c7e03ae1fcec76630c42070e25953b5782cdf",
+    "asset": "Amulet",
+    "scheme": "exact-canton"
+  },
   "settlement": "EIP-3009 transferWithAuthorization (USDC), settled via Coinbase CDP facilitator on Base mainnet",
   "endpoints": [
     {
@@ -78,6 +86,218 @@
       "exampleResponse": {
         "ok": true,
         "tier": "discovery"
+      }
+    },
+    {
+      "tier": "markets",
+      "path": "/api/markets",
+      "method": "POST",
+      "networks": [
+        "eip155:8453",
+        "eip155:137"
+      ],
+      "price": {
+        "amount": "50000",
+        "currency": "USDC",
+        "decimals": 6,
+        "displayPrice": "$0.05"
+      },
+      "network": "eip155:8453",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "assetsByNetwork": {
+        "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+      },
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
+      "description": "On-chain market snapshot billed per call — cheap Dex-adjacent ticker/pool quotes for agents without a data-vendor key.",
+      "keywords": [
+        "market data",
+        "ticker",
+        "pool quote",
+        "dex",
+        "price feed"
+      ],
+      "useCases": [
+        "agent market snapshot",
+        "cheap price read"
+      ]
+    },
+    {
+      "tier": "postman",
+      "path": "/api/postman",
+      "method": "POST",
+      "networks": [
+        "eip155:8453",
+        "eip155:137"
+      ],
+      "price": {
+        "amount": "100000",
+        "currency": "USDC",
+        "decimals": 6,
+        "displayPrice": "$0.10"
+      },
+      "network": "eip155:8453",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "assetsByNetwork": {
+        "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+      },
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
+      "description": "Postman collection / HTTP fixture runner billed per call — execute a stored request collection without a Postman account.",
+      "keywords": [
+        "postman",
+        "http collection",
+        "api test",
+        "fixture runner"
+      ],
+      "useCases": [
+        "agent QA run",
+        "pay-per-collection execute"
+      ]
+    },
+    {
+      "tier": "attest",
+      "path": "/api/attest",
+      "method": "POST",
+      "networks": [
+        "eip155:8453",
+        "eip155:137"
+      ],
+      "price": {
+        "amount": "100000",
+        "currency": "USDC",
+        "decimals": 6,
+        "displayPrice": "$0.10"
+      },
+      "network": "eip155:8453",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "assetsByNetwork": {
+        "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+      },
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
+      "description": "Agent Trust quick attestation — probe any endpoint for liveness, https, latency, and a parsed x402 402 payment rail; returns a structured A-D graded attestation.",
+      "keywords": [
+        "agent trust",
+        "endpoint attestation",
+        "x402 verification",
+        "kya",
+        "liveness",
+        "payment rail check",
+        "agent due diligence"
+      ],
+      "useCases": [
+        "pre-purchase endpoint due diligence",
+        "agent procurement screening",
+        "verify a paid API before committing spend"
+      ],
+      "exampleRequest": {
+        "method": "POST",
+        "body": {
+          "url": "https://other-agent.example/api/some-service"
+        }
+      },
+      "exampleResponse": {
+        "ok": true,
+        "tier": "attest",
+        "attestation": {
+          "target": "https://example.com",
+          "mode": "quick",
+          "verdict": "A",
+          "checks": [
+            {
+              "name": "reachable",
+              "ok": true,
+              "detail": "HTTP 402 in 120ms",
+              "ms": 120
+            },
+            {
+              "name": "https",
+              "ok": true,
+              "detail": "https transport"
+            },
+            {
+              "name": "x402_rail",
+              "ok": true,
+              "detail": "402 requirements parsed"
+            }
+          ],
+          "attested_at": "2026-09-08T00:00:00.000Z",
+          "attestor": "genesis-conductor"
+        }
+      }
+    },
+    {
+      "tier": "attest-audit",
+      "path": "/api/attest-audit",
+      "method": "POST",
+      "networks": [
+        "eip155:8453",
+        "eip155:137"
+      ],
+      "price": {
+        "amount": "2500000",
+        "currency": "USDC",
+        "decimals": 6,
+        "displayPrice": "$2.50"
+      },
+      "network": "eip155:8453",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "assetsByNetwork": {
+        "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+      },
+      "payTo": "0x60C4499870f115664d7FfD8411b023DBEf3377d9",
+      "description": "Agent Trust full audit — deep endpoint attestation with latency-consistency drift checks, response-shape verification, and full x402 payment-rail decomposition for counterparty risk.",
+      "keywords": [
+        "agent trust audit",
+        "kya",
+        "kyb",
+        "due diligence",
+        "counterparty risk",
+        "x402 verification",
+        "procurement"
+      ],
+      "useCases": [
+        "agent procurement counterparty risk",
+        "high-value purchase due diligence",
+        "continuous vendor monitoring"
+      ],
+      "exampleRequest": {
+        "method": "POST",
+        "body": {
+          "url": "https://other-agent.example/api/high-value-service",
+          "mode": "audit"
+        }
+      },
+      "exampleResponse": {
+        "ok": true,
+        "tier": "attest-audit",
+        "attestation": {
+          "target": "https://example.com",
+          "mode": "audit",
+          "verdict": "A",
+          "checks": [
+            {
+              "name": "reachable",
+              "ok": true,
+              "detail": "HTTP 402 in 120ms",
+              "ms": 120
+            },
+            {
+              "name": "https",
+              "ok": true,
+              "detail": "https transport"
+            },
+            {
+              "name": "x402_rail",
+              "ok": true,
+              "detail": "402 requirements parsed"
+            }
+          ],
+          "attested_at": "2026-09-08T00:00:00.000Z",
+          "attestor": "genesis-conductor"
+        }
       }
     },
     {
@@ -350,6 +570,10 @@
     "micropayment",
     "eip-3009",
     "cdp facilitator",
+    "exact-canton",
+    "canton",
+    "amulet",
+    "chainsafe",
     "metered billing",
     "plugin marketplace",
     "license checkout"

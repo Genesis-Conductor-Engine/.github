@@ -48,6 +48,9 @@ TIER_INFERENCE_USD6 = "10000000"
 TIER_SPECIALIZED_USD6 = "100000000"
 TIER_FOUNDERS_USD6 = "4999000000"
 TIER_SOURCE_EXCLUSIVE_USD6 = "9999000000"
+# Live Worker already binds these two (do not drop on next script PUT).
+TIER_MARKETS_USD6 = "50000"
+TIER_POSTMAN_USD6 = "100000"
 # ERC-4337 UserOp sponsorship quote (USDC 6-decimals: 100000 = $0.10)
 TIER_SPONSOR_USD6 = "100000"
 # ETH pricing — 18-decimal wei (calculated at $2000/ETH)
@@ -86,5 +89,22 @@ SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID = ""
 #   https://api.blockscout.com/{chain_id}/api/v2/...  (Base chain_id=8453)
 # CDP Node Base: https://api.developer.coinbase.com/rpc/v1/base/<token> (never commit the token)
 MAIN_WALLET = "0x967a9C352a87D3a72baa7aD10632A7276101dBc9"  # rotated 2026-08-01; old key compromised, see LAUNCH_PLAN.md
-# Public Chatbase website-widget id (ships in HTML). Not a secret.
-CHATBOT_WIDGET_ID = "xcbot_WngyZGNMbzJaUWVPQ3I3aklDUGN6R1ZCY0tkMGNHR2xUb3Roak1KVUVrT1NoOjE3ODg0NzE4MTA5ODk6MTowOmJ0OjE"
+# Public Intercom Messenger app_id (ships in HTML). Not a secret.
+CHATBOT_WIDGET_ID = "oe3n0lo3"
+
+# Workers Logs + Traces (dashboard persist). 100% head sampling.
+# Top-level enabled is the master switch — nested logs/traces alone leave it off.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true

@@ -18,6 +18,11 @@ export const SNAPSHOT_KEY = 'cashflow:snapshot';
 export const LEDGER_KEY = 'cashflow:ledger';
 export const LEDGER_MAX = 200;
 export const FALLBACK_ETH_USD = 1877.49;
+/** x402 payTo / HOT. Sweep destination for Hyperliquid Place realized USDC (Base). */
+export const HOT_X402 = '0x60C4499870f115664d7FfD8411b023DBEf3377d9';
+/** MetaMask gas-sponsorship EOA (Basescan "Gas Station 3"). Foreign infra — not GC, not HOT, not TREASURY_SINK. */
+export const METAMASK_GAS_STATION_3 = '0xb42f812a44c22cc6b861478900401ee759ebead6';
+export const FOREIGN_INFRA = [METAMASK_GAS_STATION_3] as const;
 
 /** Native USDC only. Same CSW address on each chain; not agent-signable. */
 export const SETTLEMENT_USDC_CHAINS = [
@@ -29,8 +34,8 @@ export const SETTLEMENT_USDC_CHAINS = [
 export const FLEET = [
   { id: 'treasury', role: 'Root treasury (locked)', address: '0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75' },
   { id: 'settlement', role: 'Settlement / working capital (CSW, ETH+Base+Arb)', address: '0x937897fe19F675c96a71078820F21cA9bD637180' },
-  { id: 'hot', role: 'HOT_X402 / LP owner', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' },
-  { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo = HOT)', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' },
+  { id: 'hot', role: 'HOT_X402 / LP owner', address: HOT_X402 },
+  { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo = HOT)', address: HOT_X402 },
   { id: 'main', role: 'x402 MAIN_WALLET (signer)', address: '0x967a9C352a87D3a72baa7aD10632A7276101dBc9' },
 ] as const;
 
@@ -60,6 +65,35 @@ export const VENDORS = [
     amount_usd: null,
   },
 ] as const;
+
+/** Inbound monetization leverage that is supposed to accumulate as Base USDC on HOT. */
+export const LIQUIDITY_RAILS = [
+  {
+    id: 'x402',
+    name: 'x402 bazaar',
+    network: 'base-mainnet',
+    sink: HOT_X402,
+    status: 'live',
+    note: 'Paid API settlement. VAULT_ADDRESS / bazaar payTo is HOT.',
+  },
+  {
+    id: 'hyperliquid',
+    name: 'Hyperliquid Place',
+    network: 'hyperliquid-mainnet',
+    sink: HOT_X402,
+    status: 'mainnet_only',
+    note: 'Monetization leverage for cashflow liquidity accumulation. Realized HL USDC is not Base USDC — sweep to HOT, then POST /webhooks/treasury source=hyperliquid. Never testnet. Agent wallet ≠ HOT.',
+  },
+] as const;
+
+export interface LiquidityRail {
+  id: string;
+  name: string;
+  network: string;
+  sink: string;
+  status: string;
+  note: string;
+}
 
 export type Direction = 'in' | 'out';
 
@@ -122,6 +156,8 @@ export interface CashflowSnapshot {
   assumptions: string[];
   freshness?: 'live' | 'cached';
   marks?: MarketMarks;
+  /** Monetization leverage rails (x402 + Hyperliquid Place). Optional on cached KV snaps. */
+  rails?: readonly LiquidityRail[];
 }
 
 export interface RoiModel {
@@ -161,9 +197,20 @@ export function computeRoi(workingCapitalUsdc: number): RoiModel {
   };
 }
 
+export function isTestnetLedgerPayload(rec: Record<string, unknown>): boolean {
+  const keys = ['network', 'net', 'chain', 'HYPELENS_NET', 'hypelens_net'];
+  return keys.some((k) => typeof rec[k] === 'string' && /testnet/i.test(String(rec[k])));
+}
+
+export function isForeignInfra(address: string): boolean {
+  const a = address.toLowerCase();
+  return FOREIGN_INFRA.some((x) => x.toLowerCase() === a);
+}
+
 export function parseWebhook(body: unknown): LedgerEvent[] {
   if (!body || typeof body !== 'object') return [];
   const rec = body as Record<string, unknown>;
+  if (isTestnetLedgerPayload(rec)) return [];
 
   if (rec.type === 'ADDRESS_ACTIVITY' && rec.event && typeof rec.event === 'object') {
     const ev = rec.event as Record<string, unknown>;
@@ -174,6 +221,7 @@ export function parseWebhook(body: unknown): LedgerEvent[] {
       const a = raw as Record<string, unknown>;
       const from = String(a.fromAddress || a.from || '');
       const to = String(a.toAddress || a.to || '');
+      if (isForeignInfra(from) || isForeignInfra(to)) continue;
       const asset = String(a.asset || 'UNKNOWN');
       const amount = Number(a.value ?? a.amount ?? 0);
       const direction = classifyDirection(from, to);
@@ -205,15 +253,23 @@ export function parseWebhook(body: unknown): LedgerEvent[] {
   }
 
   if (typeof rec.asset === 'string' && (rec.direction === 'in' || rec.direction === 'out')) {
+    const source = typeof rec.source === 'string' ? rec.source : 'manual';
+    const from = typeof rec.from === 'string' ? rec.from : undefined;
+    const to = typeof rec.to === 'string'
+      ? rec.to
+      : source === 'hyperliquid'
+        ? HOT_X402
+        : undefined;
+    if ((from && isForeignInfra(from)) || (to && isForeignInfra(to))) return [];
     return [{
       ts: typeof rec.ts === 'string' ? rec.ts : new Date().toISOString(),
-      source: typeof rec.source === 'string' ? rec.source : 'manual',
+      source,
       direction: rec.direction,
       asset: rec.asset,
       amount: Number(rec.amount ?? 0) || 0,
       tx: typeof rec.tx === 'string' ? rec.tx : undefined,
-      from: typeof rec.from === 'string' ? rec.from : undefined,
-      to: typeof rec.to === 'string' ? rec.to : undefined,
+      from,
+      to,
       note: typeof rec.note === 'string' ? rec.note : undefined,
     }];
   }
@@ -498,6 +554,7 @@ export async function refreshSnapshot(
     ledger,
     freshness: 'live',
     marks,
+    rails: [...LIQUIDITY_RAILS],
     assumptions: [
       ...(rpcLive ? [] : ['RPC degraded: last operator-verified snapshot used for balances.']),
       `ETH mark: ${marks.eth_source} spot (fallback ${FALLBACK_ETH_USD} if fetch fails).`,
@@ -507,6 +564,8 @@ export async function refreshSnapshot(
       'Flywheel rates are models, not observed returns.',
       'Alchemy invoice amount unknown — dollar bill is dashboard-only; Worker RPC is live.',
       'x402 payTo is HOT 0x60C4499870f115664d7FfD8411b023DBEf3377d9. Settlement 0x9378… is a Coinbase Smart Wallet (same 806-byte code on ETH/Base/Arb), not agent-signable. WETH/USDT dust is not in working capital.',
+      'Hyperliquid Place is mainnet-only (HYPELENS_NET=mainnet). Realized HL USDC is monetization leverage for cashflow liquidity; sweep to HOT for x402. POST /webhooks/treasury source=hyperliquid. Agent wallet is not HOT.',
+      'MetaMask Gas Station 3 0xb42f812a44c22cc6b861478900401ee759ebead6 is foreign gas-sponsorship infra (EOA on Base). Airdrop/disperse/phishing ERC-20 to that address is not cashflow. Not TREASURY_SINK 0x9545…, not HOT.',
     ],
   };
   if (kv) await kv.put(SNAPSHOT_KEY, JSON.stringify(snap));
@@ -565,6 +624,18 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
       <td>${v.amount_usd == null ? 'unknown' : usd(v.amount_usd)}</td>
       <td>${escapeHtml(v.note)} <a href="${escapeHtml(v.settle_url)}">settle</a></td>
     </tr>`).join('');
+  const rails = (snap.rails && snap.rails.length > 0) ? snap.rails : LIQUIDITY_RAILS;
+  const railRows = rails.map((r) => {
+    const ok = r.status === 'live' || r.status === 'mainnet_only';
+    return `
+    <tr>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.network)}</td>
+      <td><code>${escapeHtml(r.sink)}</code></td>
+      <td><span class="pill ${ok ? 'ok' : 'warn'}">${escapeHtml(r.status)}</span></td>
+      <td>${escapeHtml(r.note)}</td>
+    </tr>`;
+  }).join('');
   const fly = snap.roi.flywheel.map((f) => `
     <tr><td>${escapeHtml(f.label)}</td><td>${usd(f.future_usdc)}</td></tr>`).join('');
   const ledger = snap.ledger.slice(0, 25).map((e) => `
@@ -633,6 +704,15 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
     </section>
 
     <section class="defer">
+      <h2>Liquidity rails (monetization leverage)</h2>
+      <p class="sub">Inbound USDC that is supposed to land on HOT for x402 settlement. Hyperliquid Place is <strong>mainnet only</strong> — HL L1 USDC is not automatic Base HOT; sweep then ledger <code>source=hyperliquid</code>.</p>
+      <table>
+        <thead><tr><th>Rail</th><th>Network</th><th>Sink</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>${railRows}</tbody>
+      </table>
+    </section>
+
+    <section class="defer">
       <h2>Market sensors</h2>
       <p class="sub">wQFLOP ${escapeHtml(snap.marks?.wqflop.priced ? 'priced' : 'unpriced')} · pools ${snap.marks?.wqflop.pools ?? 0} · ${escapeHtml(snap.marks?.wqflop.note ?? 'no mark')}</p>
     </section>
@@ -666,7 +746,7 @@ export function buildCashflowHtml(snap: CashflowSnapshot, hostname: string): str
 
     <section class="defer">
       <h2>Auto-webhook ledger</h2>
-      <p class="sub">POST <code>/webhooks/treasury</code> (Alchemy ADDRESS_ACTIVITY or <code>{direction,asset,amount}</code>). Optional header <code>X-Treasury-Hook</code>.</p>
+      <p class="sub">POST <code>/webhooks/treasury</code> (Alchemy ADDRESS_ACTIVITY, Hyperliquid <code>{source:"hyperliquid",direction,asset,amount}</code>, or generic treasury event). Testnet payloads are rejected. Optional header <code>X-Treasury-Hook</code>.</p>
       <table>
         <thead><tr><th>Time</th><th>Source</th><th>Dir</th><th>Asset</th><th>Amount</th><th>Tx</th></tr></thead>
         <tbody>${ledger}</tbody>

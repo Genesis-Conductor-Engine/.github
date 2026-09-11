@@ -153,7 +153,7 @@ describe('x402 Worker discovery routes', () => {
     expect(health.response.status).toBe(200);
     await expect(responseJson<Record<string, unknown>>(health.response)).resolves.toMatchObject({
       status: 'ok',
-      tiers: 7,
+      tiers: 11,
       vault: VAULT,
       eth_pricing_enabled: true,
     });
@@ -177,9 +177,13 @@ describe('x402 Worker discovery routes', () => {
     const x402Body = await responseJson<{ endpoints: Array<{ path: string; shopify_url?: string }> }>(
       (await dispatch('/.well-known/x402')).response,
     );
-    expect(x402Body.endpoints).toHaveLength(7);
+    expect(x402Body.endpoints).toHaveLength(11);
     expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/founders');
     expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/sponsor-userop');
+    expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/markets');
+    expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/postman');
+    expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/attest');
+    expect(x402Body.endpoints.map((endpoint) => endpoint.path)).toContain('/api/attest-audit');
     expect(x402Body.endpoints.find((endpoint) => endpoint.path === '/api/founders')).toMatchObject({
       shopify_url: 'https://shop.example/founders',
     });
@@ -230,16 +234,17 @@ describe('x402 Worker discovery routes', () => {
   });
 
   it('serves the verification ledger and injects the chatbot widget', async () => {
-    const { response } = await dispatch('/ledger', {}, { CHATBOT_WIDGET_ID: 'xcbot_test' });
+    const { response } = await dispatch('/ledger', {}, { CHATBOT_WIDGET_ID: 'oe3n0lo3' });
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toContain('text/html');
     const html = await response.text();
     expect(html).toContain('Genesis Conductor Verification Ledger');
     expect(html).toContain('0x69262A2D7c92c074729823B654fE7E4Cdb749747');
     expect(html).toContain('data-gc-chatbot="1"');
-    expect(html).toContain('xcbot_test');
+    expect(html).toContain('oe3n0lo3');
+    expect(html).toContain('widget.intercom.io');
 
-    const alias = await dispatch('/verify', {}, { CHATBOT_WIDGET_ID: 'xcbot_test' });
+    const alias = await dispatch('/verify', {}, { CHATBOT_WIDGET_ID: 'oe3n0lo3' });
     expect(alias.response.status).toBe(200);
   });
 
@@ -390,6 +395,32 @@ describe('x402 Worker paid tier routes', () => {
     expect(typeof canton?.nonce).toBe('string');
     expect(typeof canton?.validBefore).toBe('string');
     expect(body.accepts[0]).toMatchObject({ amount: '10000', asset: USDC_BASE });
+  });
+
+  it('advertises $0.05 USDC for POST /api/markets without a signature', async () => {
+    const { response } = await dispatch('/api/markets', { method: 'POST' });
+    const body = await responseJson<{
+      accepts: Array<{ amount: string; asset: string; payTo: string; scheme?: string }>;
+    }>(response);
+    expect(response.status).toBe(402);
+    expect(body.accepts[0]).toMatchObject({
+      amount: '50000',
+      asset: USDC_BASE,
+      payTo: VAULT,
+    });
+  });
+
+  it('advertises $0.10 USDC for POST /api/postman without a signature', async () => {
+    const { response } = await dispatch('/api/postman', { method: 'POST' });
+    const body = await responseJson<{
+      accepts: Array<{ amount: string; asset: string; payTo: string }>;
+    }>(response);
+    expect(response.status).toBe(402);
+    expect(body.accepts[0]).toMatchObject({
+      amount: '100000',
+      asset: USDC_BASE,
+      payTo: VAULT,
+    });
   });
 
   it('advertises $0.10 USDC for POST /api/sponsor-userop without a signature', async () => {
@@ -899,6 +930,41 @@ describe('x402 Worker cashflow surface', () => {
     const body = await responseJson<{ ok: boolean; key_configured: boolean }>(response);
     expect(body.ok).toBe(false);
     expect(body.key_configured).toBe(false);
+  });
+
+  it('ingests a Hyperliquid Place fill as cashflow accumulation toward HOT', async () => {
+    const kv = memoryKv();
+    const { response } = await dispatch('/webhooks/treasury', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'hyperliquid',
+        direction: 'in',
+        asset: 'USDC',
+        amount: 12.5,
+        note: 'realized pnl sweep toward HOT',
+      }),
+    }, { API_KEYS: kv });
+    expect(response.status).toBe(200);
+    await expect(responseJson<{ accepted: number; ledger_size: number }>(response)).resolves.toEqual({
+      accepted: 1,
+      ledger_size: 1,
+    });
+  });
+
+  it('rejects Hyperliquid testnet treasury webhooks', async () => {
+    const { response } = await dispatch('/webhooks/treasury', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'hyperliquid',
+        direction: 'in',
+        asset: 'USDC',
+        amount: 12.5,
+        network: 'testnet',
+      }),
+    });
+    expect(response.status).toBe(400);
   });
 
   it('ingests a treasury webhook into the ledger', async () => {

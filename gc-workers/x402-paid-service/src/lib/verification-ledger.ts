@@ -527,19 +527,28 @@ export function buildVerificationLedgerHtml(widgetId?: string): string {
 
       <article class="row calm">
         <div class="row-id">
-          <span class="row-name">Treasury / profit sink — EOA</span>
+          <span class="row-name">Treasury sink — EOA (ops: TREASURY_SINK)</span>
           <span class="addr"><a href="https://basescan.org/address/0x9545e2439c5c75d3aA723AcaC1AA6B0fa1DB6956">0x9545e2439c5c75d3aA723AcaC1AA6B0fa1DB6956</a></span>
         </div>
-        <span class="pill p-inert">Wallet</span>
+        <span class="pill p-inert">Wallet + EIP-7702</span>
         <div class="row-meta">
           <span class="fact"><span class="fact-k">Txs</span><span class="fact-v">3,079</span></span>
           <span class="fact"><span class="fact-k">Balance</span><span class="fact-v">0.0000072 ETH</span></span>
           <span class="fact"><span class="fact-k">Deployer of</span><span class="fact-v">all 3 unverified contracts</span></span>
         </div>
         <p class="why">
-          <b>Flag, unrelated to verification:</b> BaseScan shows a <b>MetaMask EIP-7702 delegator</b> set on this
-          address. A treasury EOA carrying delegated code is worth a deliberate review — confirm you set it,
-          and that the delegate is what you think it is. Separately, the ETH balance is effectively drained.
+          Confirmed in logs as the Genesis Conductor Engine treasury sink. Ops label
+          <code>TREASURY_SINK</code> (legacy <code>METAMASK1_FEE_SINK</code>). Associated protocol:
+          <code>ImplicitWrapArbiter</code> — <b>index wrap PnL here; do not skip as a MetaMask fee path.</b>
+          HANDOFF still has <code>BATCH_KIND</code> as an open blocker (wrap and trace cannot share a batcher).
+          Certificate public key (Solana/Ed25519): <code>HLZNTuvJ84qhJXEMx8UWGsfxRVDVxESc3sVecAxqjqFi</code>.
+          <b>Not a verified GC Engine Solidity contract.</b> Live code is EIP-7702 prefix
+          <code>0xef0100</code> delegating to MetaMask <code>EIP7702StatelessDeleGator</code>
+          <code>0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B</code>. Blockscout <code>is_verified=true</code>
+          refers to that delegator, not to published Genesis Conductor Engine source. Distinct from locked
+          root treasury <code>0x54E2…bC75</code>. Distinct from MetaMask Gas Station 3
+          <code>0xb42f812a44c22cc6b861478900401ee759ebead6</code> (foreign gas-sponsorship EOA;
+          airdrop/phishing ERC-20 there is not wrap PnL). ETH balance is effectively drained.
         </p>
       </article>
 
