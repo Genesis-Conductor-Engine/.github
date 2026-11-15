@@ -1,10 +1,9 @@
 /**
- * Operator affordance: one-tap 100 USDC (Base native) from the settlement
- * CSW to HOT. This page does not sign. The CSW owner still approves.
+ * Operator affordance: one-tap 100 USDC (Base native) to HOT.
+ * This page does not sign — the connected wallet owner approves via Base Pay.
  */
 
 export const HOT_ADDRESS = '0x87392243E196FCa85702B74343a57973294b0e5E';
-export const SETTLEMENT_CSW = '0x937897fe19F675c96a71078820F21cA9bD637180';
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 export const HOT_FUND_USD = '100';
 export const HOT_FUND_ATOMIC = 100_000_000; // 100 * 10^6
@@ -42,23 +41,25 @@ export function buildHotFundHtml(): string {
     .sub { color: var(--muted); }
     a { color: #8cb4ff; }
     ul { padding-left: 1.1rem; }
+    .warn { color: #f5a623; }
   </style>
 </head>
 <body>
   <main>
     <h1>Fund HOT — 100 USDC on Base</h1>
-    <p class="sub">Settlement CSW <code>${SETTLEMENT_CSW}</code> → HOT / payTo <code>${HOT_ADDRESS}</code>. Native USDC <code>${USDC_BASE}</code> on Base 8453. Do not send on Ethereum or Arbitrum. Do not send to the USDC contract.</p>
+    <p class="sub">Send native USDC on Base to HOT / payTo <code>${HOT_ADDRESS}</code>. Token contract <code>${USDC_BASE}</code> on Base 8453.</p>
+    <p class="warn">⚠ Do not send to old addresses. 0x60C4 is compromised. 0x54E2 and 0x9378 are NOT OURS.</p>
     <div class="card">
-      <p><b>Amount</b> ${HOT_FUND_USD} USDC &nbsp;·&nbsp; <b>Chain</b> Base</p>
-      <p><button id="pay" type="button">Pay 100 USDC with Base Account</button></p>
-      <p id="status" class="sub">Opens the Base / Coinbase Smart Wallet prompt. Agent cannot sign 0x9378… from here.</p>
-      <p>Manual / wallet-scan URI:<br><code id="eip681">${eip681}</code></p>
-      <p>transfer() calldata (token = USDC, not the destination):<br><code>${calldata}</code></p>
+      <p><b>Amount</b> ${HOT_FUND_USD} USDC &nbsp;·&nbsp; <b>Chain</b> Base &nbsp;·&nbsp; <b>To</b> HOT</p>
+      <p><button id="pay" type="button">Pay 100 USDC with Base Pay</button></p>
+      <p id="status" class="sub">Opens Coinbase Smart Wallet / Base Pay. You sign from your own wallet.</p>
+      <p>Manual EIP-681 URI:<br><code id="eip681">${eip681}</code></p>
+      <p>transfer() calldata (call on USDC contract, not the destination):<br><code>${calldata}</code></p>
     </div>
     <ul>
-      <li>From: settlement CSW ${SETTLEMENT_CSW}</li>
       <li>To: HOT ${HOT_ADDRESS}</li>
       <li>Token: Base native USDC ${USDC_BASE}</li>
+      <li>Chain: Base (8453)</li>
     </ul>
     <p><a href="/cashflow">Back to cashflow</a></p>
   </main>

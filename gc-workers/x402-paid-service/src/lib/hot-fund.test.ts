@@ -3,7 +3,6 @@ import {
   BASE_CHAIN_ID,
   HOT_ADDRESS,
   HOT_FUND_ATOMIC,
-  SETTLEMENT_CSW,
   USDC_BASE,
   buildHotFundHtml,
   eip681UsdcTransfer,
@@ -26,14 +25,16 @@ describe('hot-fund', () => {
     expect(uri).toContain(`uint256=${HOT_FUND_ATOMIC}`);
   });
 
-  it('renders a page that names CSW, HOT, Base, and 100 USDC without secrets', () => {
+  it('renders a page that names HOT, Base, and 100 USDC without secrets or stale addresses', () => {
     const html = buildHotFundHtml();
     expect(html).toContain(HOT_ADDRESS);
-    expect(html).toContain(SETTLEMENT_CSW);
     expect(html).toContain(USDC_BASE);
     expect(html).toContain('100 USDC');
     expect(html).toContain('Base');
     expect(html).toContain('same-origin-allow-popups');
+    expect(html).toContain('NOT OURS');
     expect(html).not.toMatch(/sk_test_|alch_|AvPSHy|privateKey|mnemonic/i);
+    expect(html).not.toContain('0x937897fe19F675c96a71078820F21cA9bD637180');
+    expect(html).not.toContain('Settlement CSW');
   });
 });
