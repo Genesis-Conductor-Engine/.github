@@ -129,6 +129,8 @@ interface Env {
   SOLANA_USDC_MINT: string;
   SOLANA_RPC_URL: string;
   SOLANA_NETWORK: string;
+  /** Base58 owner pubkey of the Solana USDC ATA that receives payments. Unset = Solana disabled. */
+  SOLANA_VAULT_ADDRESS?: string;
   SHOPIFY_FOUNDERS_URL: string;
   SHOPIFY_SOURCE_EXCLUSIVE_URL: string;
   SHOPIFY_STORE_DOMAIN: string;
@@ -267,17 +269,34 @@ const TIERS: TierConfig[] = [
 
 const SOLANA_USDC_MINT_DEFAULT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
+const SOLANA_MAX_TX_AGE_SECONDS = 120;
+
+const SOLANA_HIGH_TIER_THRESHOLD = 100_000_000;
+
+interface TokenBalance {
+  accountIndex: number;
+  mint: string;
+  owner: string;
+  uiTokenAmount: { amount: string; decimals: number };
+}
+
+interface SolanaVerifyResult {
+  isValid: boolean;
+  payer?: string;
+  error?: string;
+  retryable?: boolean;
+}
+
 async function verifySolanaUsdcTransfer(
   signature: string,
   expectedAmount: string,
-  expectedRecipient: string,
+  vaultOwner: string,
   env: Env,
-): Promise<{ isValid: boolean; payer?: string; error?: string }> {
+): Promise<SolanaVerifyResult> {
   const rpcUrl = resolveSolanaRpcUrl(env);
   const usdcMint = env.SOLANA_USDC_MINT || SOLANA_USDC_MINT_DEFAULT;
 
   try {
-    // Fetch transaction details
     const resp = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -294,60 +313,64 @@ async function verifySolanaUsdcTransfer(
 
     const json = (await resp.json()) as {
       result?: {
+        blockTime?: number;
         transaction?: {
           message?: {
             accountKeys?: Array<{ pubkey: string; signer?: boolean }>;
-            instructions?: Array<{
-              parsed?: {
-                type?: string;
-                info?: {
-                  source?: string;
-                  destination?: string;
-                  amount?: string;
-                  mint?: string;
-                  authority?: string;
-                };
-              };
-            }>;
           };
         };
-        meta?: { err?: unknown };
+        meta?: {
+          err?: unknown;
+          preTokenBalances?: TokenBalance[];
+          postTokenBalances?: TokenBalance[];
+        };
       };
       error?: { message: string };
     };
 
     if (!json.result?.transaction) {
-      return { isValid: false, error: 'Transaction not found' };
+      return { isValid: false, error: 'Transaction not found or not yet finalized', retryable: true };
     }
 
     if (json.result.meta?.err) {
       return { isValid: false, error: 'Transaction failed on-chain' };
     }
 
-    const instructions = json.result.transaction.message?.instructions || [];
-    const accountKeys = json.result.transaction.message?.accountKeys || [];
-
-    // Find USDC transfer instruction
-    for (const ix of instructions) {
-      if (ix.parsed?.type === 'transfer' && ix.parsed?.info) {
-        const info = ix.parsed.info;
-        if (info.mint === usdcMint && info.destination === expectedRecipient) {
-          // Verify amount (USDC has 6 decimals)
-          const amountMicroUsdc = BigInt(info.amount || '0');
-          const expectedMicroUsdc = BigInt(expectedAmount);
-          if (amountMicroUsdc >= expectedMicroUsdc) {
-            const payer = info.source || accountKeys.find((k) => k.signer)?.pubkey || 'unknown';
-            return { isValid: true, payer };
-          }
-          return { isValid: false, error: `Amount mismatch: got ${info.amount}, expected ${expectedAmount}` };
-        }
+    if (json.result.blockTime) {
+      const age = Math.floor(Date.now() / 1000) - json.result.blockTime;
+      if (age > SOLANA_MAX_TX_AGE_SECONDS) {
+        return { isValid: false, error: `Transaction too old (${age}s > ${SOLANA_MAX_TX_AGE_SECONDS}s limit)` };
       }
     }
 
-    return { isValid: false, error: 'No matching USDC transfer found in transaction' };
+    const pre = json.result.meta?.preTokenBalances ?? [];
+    const post = json.result.meta?.postTokenBalances ?? [];
+
+    function balanceFor(balances: TokenBalance[]): bigint {
+      const entry = balances.find(b => b.mint === usdcMint && b.owner === vaultOwner);
+      return BigInt(entry?.uiTokenAmount.amount ?? '0');
+    }
+
+    const delta = balanceFor(post) - balanceFor(pre);
+    if (delta < BigInt(expectedAmount)) {
+      return { isValid: false, error: `Insufficient USDC received: got ${delta}, expected ${expectedAmount}` };
+    }
+
+    const accountKeys = json.result.transaction.message?.accountKeys ?? [];
+    const payer = accountKeys.find(k => k.signer)?.pubkey ?? 'unknown';
+
+    return { isValid: true, payer };
   } catch (e) {
     return { isValid: false, error: `Solana RPC error: ${String(e)}` };
   }
+}
+
+async function claimSolanaSig(sig: string, kv: KVNamespace): Promise<boolean> {
+  const key = `sol-sig:${sig}`;
+  const existing = await kv.get(key);
+  if (existing !== null) return false;
+  await kv.put(key, '1', { expirationTtl: 3600 });
+  return true;
 }
 
 // ── x402 helpers ──────────────────────────────────────────────────────────────
@@ -952,9 +975,10 @@ function buildX402Discovery(env: Env, hostname: string) {
     asset: env.USDC_ADDRESS || USDC_BASE,
     network: NETWORK,
     ethEnabled: ETH_SETTLEMENT_ENABLED,
-    solanaEnabled: true,
+    solanaEnabled: Boolean(env.SOLANA_VAULT_ADDRESS),
     solanaNetwork: env.SOLANA_NETWORK || 'mainnet-beta',
     solanaUsdcMint: env.SOLANA_USDC_MINT || SOLANA_USDC_MINT_DEFAULT,
+    solanaPayTo: env.SOLANA_VAULT_ADDRESS || null,
     shopify: {
       store: env.SHOPIFY_STORE_DOMAIN || 'shop.genesisconductor.io',
       founders: env.SHOPIFY_FOUNDERS_URL,
@@ -1173,11 +1197,11 @@ export default {
       const html = `<!DOCTYPE html><html lang="en"><head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Genesis Conductor x402 — Tiered Paid API</title>
-  <meta name="description" content="Six-tier x402 paid service on Base. Pay USDC, ETH, or Solana USDC.">
+  <meta name="description" content="Six-tier x402 paid service on Base. Pay USDC or ETH${env.SOLANA_VAULT_ADDRESS ? ', or USDC on Solana' : ''}.">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebAPI","name":"Genesis Conductor x402 Tiered Service","url":"https://${hostname}"}</script>
 </head><body>
   <h1>Genesis Conductor x402 Tiered Service</h1>
-  <p>${TIERS.length} tiers of paid API access — pay <strong>USDC</strong> or <strong>ETH</strong> on Base, or <strong>USDC</strong> on Solana.</p>
+  <p>${TIERS.length} tiers of paid API access — pay <strong>USDC</strong> or <strong>ETH</strong> on Base${env.SOLANA_VAULT_ADDRESS ? ', or <strong>USDC</strong> on Solana' : ''}.</p>
   <table border="1" cellpadding="4"><thead><tr><th>Endpoint</th><th>Price</th><th>Description</th></tr></thead>
   <tbody>${tierRows}</tbody></table>
   <p>See <a href="/llms.txt">/llms.txt</a>, <a href="/.well-known/x402">/.well-known/x402</a>, or the <a href="/cashflow">internal cashflow dashboard</a>.</p>
@@ -1191,7 +1215,7 @@ export default {
         tiers: TIERS.length,
         vault: env.VAULT_ADDRESS,
         eth_pricing_enabled: ETH_PRICING_ENABLED(env),
-        solana_enabled: true,
+        solana_enabled: Boolean(env.SOLANA_VAULT_ADDRESS),
         solana_rpc: resolveSolanaRpcUrl(env).includes('alchemy.com') ? 'alchemy' : 'configured',
         shopify_store: env.SHOPIFY_STORE_DOMAIN || 'shop.genesisconductor.io',
         alchemy_base_rpc: Boolean(env.ALCHEMY_BASE_RPC_URL),
@@ -1610,39 +1634,65 @@ export default {
       // Check for Solana payment
       const solanaSignature = request.headers.get('X-SOLANA-SIGNATURE');
       if (solanaSignature) {
-        const solanaAmount = tier.getAmount(env);
-        const result = await verifySolanaUsdcTransfer(solanaSignature, solanaAmount, env.VAULT_ADDRESS, env);
-        
-        if (!result.isValid) {
-          return Response.json({ error: result.error || 'Solana payment verification failed' }, { status: 400 });
+        if (!env.SOLANA_VAULT_ADDRESS) {
+          return Response.json({ error: 'Solana payments are not configured' }, { status: 400 });
         }
-        
-        // Record Solana payment
-        ctx.waitUntil(
-          (async () => {
-            try {
-              env.ANALYTICS?.writeDataPoint({
-                blobs: [result.payer || 'unknown', tier.path, tier.description],
-                doubles: [Number(solanaAmount) / 1_000_000],
-                indexes: [result.payer || 'unknown'],
-              });
-            } catch (e) {
-              console.error('[solana-analytics] failed:', e);
-            }
-          })(),
-        );
-        
+        const solanaAmount = tier.getAmount(env);
+
+        if (BigInt(solanaAmount) >= BigInt(SOLANA_HIGH_TIER_THRESHOLD)) {
+          return Response.json({ error: 'Solana rail is not available for high-value tiers; use Base USDC' }, { status: 400 });
+        }
+
+        const claimed = env.API_KEYS ? await claimSolanaSig(solanaSignature, env.API_KEYS) : true;
+        if (!claimed) {
+          return Response.json({ error: 'Transaction signature already used' }, { status: 402 });
+        }
+
+        const result = await verifySolanaUsdcTransfer(solanaSignature, solanaAmount, env.SOLANA_VAULT_ADDRESS, env);
+
+        if (!result.isValid) {
+          return Response.json(
+            { error: result.error || 'Solana payment verification failed', ...(result.retryable ? { retryable: true } : {}) },
+            { status: result.retryable ? 503 : 400 },
+          );
+        }
+
+        const payerAddress = result.payer ?? 'unknown';
         const body = await request.json().catch(() => ({}));
+
+        try {
+          env.ANALYTICS?.writeDataPoint({
+            blobs: [payerAddress, tier.path, tier.description],
+            doubles: [Number(solanaAmount) / 1_000_000],
+            indexes: [payerAddress],
+          });
+        } catch (e) {
+          console.error('[solana-analytics] failed:', e);
+        }
+
+        const delivery = await deliverTier({
+          tierPath: tier.path,
+          body,
+          payer: payerAddress,
+          amountUsd6: solanaAmount,
+          settlementTx: solanaSignature,
+          description: tier.description,
+          asset: 'USDC_SOLANA',
+          amountRaw: solanaAmount,
+          alchemyKey: env.ALCHEMY_API_KEY,
+        });
+
         return Response.json({
           success: true,
           tier: tier.path.replace('/api/', ''),
-          result: tier.description,
+          delivery: delivery?.kind,
+          result: delivery?.result,
           input: body,
-          payer: result.payer,
+          payer: payerAddress,
           charged_usd6: solanaAmount,
           charged_eth_wei: '0',
           payment_asset: 'USDC_SOLANA',
-          solana_signature: solanaSignature,
+          settlement_tx: solanaSignature,
         });
       }
       
