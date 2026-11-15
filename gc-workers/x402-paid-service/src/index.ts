@@ -1434,6 +1434,92 @@ export default {
       });
     }
 
+    // OpenSea Tool Registry (ERC-8257) manifests
+    if (pathname.startsWith('/.well-known/ai-tool/')) {
+      const slug = pathname.replace('/.well-known/ai-tool/', '').replace(/\.json$/, '');
+      const origin = `https://${hostname}`;
+      const manifests: Record<string, object> = {
+        'gc-x402-discovery': {
+          name: 'Genesis Conductor x402 Discovery',
+          description: 'One-cent USDC micropayment smoke test on Base. Returns attested settlement receipt. Use to verify x402 payment flow before higher-tier calls.',
+          endpoint: `${origin}/api/execute`,
+          creatorAddress: env.VAULT_ADDRESS,
+          inputs: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'Freeform query or test payload' },
+            },
+            required: [],
+          },
+          outputs: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              tier: { type: 'string' },
+              delivery: { type: 'string' },
+              result: { type: 'object' },
+              payer: { type: 'string', description: 'Verified payer address from settlement' },
+              settlement_tx: { type: 'string', description: 'Base settlement transaction hash' },
+            },
+          },
+          pricing: {
+            model: 'pay_per_call',
+            amount: '10000',
+            currency: 'USDC',
+            decimals: 6,
+            network: 'eip155:8453',
+            recipient: env.VAULT_ADDRESS,
+          },
+          tags: ['x402', 'micropayment', 'base', 'usdc', 'settlement-test'],
+        },
+        'gc-x402-pro': {
+          name: 'Genesis Conductor Pro API',
+          description: 'Authenticated agent-to-agent execution with $1.00 USDC per-call billing on Base. No account, no API key, no subscription.',
+          endpoint: `${origin}/api/pro`,
+          creatorAddress: env.VAULT_ADDRESS,
+          inputs: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'Query or task payload' },
+              model: { type: 'string', description: 'Optional model hint' },
+            },
+            required: [],
+          },
+          outputs: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              tier: { type: 'string' },
+              delivery: { type: 'string' },
+              result: { type: 'object' },
+              payer: { type: 'string' },
+              settlement_tx: { type: 'string' },
+            },
+          },
+          pricing: {
+            model: 'pay_per_call',
+            amount: '1000000',
+            currency: 'USDC',
+            decimals: 6,
+            network: 'eip155:8453',
+            recipient: env.VAULT_ADDRESS,
+          },
+          tags: ['x402', 'pro', 'agent-api', 'base', 'usdc'],
+        },
+      };
+      const manifest = manifests[slug];
+      if (!manifest) {
+        return Response.json({ error: `Unknown tool slug: ${slug}` }, { status: 404 });
+      }
+      return Response.json(manifest, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
     if (pathname === '/robots.txt') {
       return new Response(`User-agent: *\nAllow: /\nSitemap: https://${hostname}/sitemap.xml\n`, {
         headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'public, max-age=86400' },
