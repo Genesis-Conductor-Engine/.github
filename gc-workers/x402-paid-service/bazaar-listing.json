@@ -1,5 +1,5 @@
 {
-  "name": "Yennefer x402 Paid Service — Tiered (Genesis Conductor)",
+  "name": "Yennefer x402 Paid Service \u2014 Tiered (Genesis Conductor)",
   "description": "Tiered x402 paid API on Base + Polygon mainnet. Seven tiers from $0.01 discovery calls to $9,999 agent-to-agent source-exclusive checkout, plus $0.10 ERC-4337 UserOp sponsorship quotes. USDC settlement via the Coinbase CDP facilitator (production-grade, EIP-3009). Agent-native: pay-per-call, no accounts or API keys. Covers generic execution, premium API access, AI inference, specialized data, licensing, plugin fulfillment, and gas sponsorship quotes.",
   "version": "2.1",
   "url": "https://x402-paid-service.iholt.workers.dev",
@@ -8,7 +8,8 @@
   "protocolVersion": "2.0",
   "networks": [
     "eip155:8453",
-    "eip155:137"
+    "eip155:137",
+    "solana:mainnet"
   ],
   "network": "eip155:8453",
   "chainId": 8453,
@@ -19,13 +20,19 @@
       "chainName": "Polygon",
       "network": "eip155:137",
       "asset": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+    },
+    {
+      "chainName": "Solana",
+      "network": "solana:mainnet",
+      "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
     }
   ],
   "scheme": "exact",
   "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   "assetsByNetwork": {
     "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+    "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+    "solana:mainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
   },
   "assetSymbol": "USDC",
   "assetDecimals": 6,
@@ -40,7 +47,8 @@
       "method": "POST",
       "networks": [
         "eip155:8453",
-        "eip155:137"
+        "eip155:137",
+        "solana:mainnet"
       ],
       "price": {
         "amount": "10000",
@@ -52,10 +60,11 @@
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "assetsByNetwork": {
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "solana:mainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
       },
       "payTo": "0x87392243E196FCa85702B74343a57973294b0e5E",
-      "description": "Discovery tier — generic paid API call. Lowest-cost entry point for agents to test x402 settlement end-to-end.",
+      "description": "Discovery tier \u2014 generic paid API call. Lowest-cost entry point for agents to test x402 settlement end-to-end.",
       "keywords": [
         "cheap api",
         "micro-payment",
@@ -115,7 +124,8 @@
       "method": "POST",
       "networks": [
         "eip155:8453",
-        "eip155:137"
+        "eip155:137",
+        "solana:mainnet"
       ],
       "price": {
         "amount": "1000000",
@@ -127,10 +137,11 @@
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "assetsByNetwork": {
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "solana:mainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
       },
       "payTo": "0x87392243E196FCa85702B74343a57973294b0e5E",
-      "description": "Pro tier — premium paid API access for higher-value agent requests.",
+      "description": "Pro tier \u2014 premium paid API access for higher-value agent requests.",
       "keywords": [
         "premium api",
         "pro tier",
@@ -159,7 +170,8 @@
       "method": "POST",
       "networks": [
         "eip155:8453",
-        "eip155:137"
+        "eip155:137",
+        "solana:mainnet"
       ],
       "price": {
         "amount": "10000000",
@@ -171,10 +183,11 @@
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "assetsByNetwork": {
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "solana:mainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
       },
       "payTo": "0x87392243E196FCa85702B74343a57973294b0e5E",
-      "description": "Inference tier — pay-per-call AI inference workloads.",
+      "description": "Inference tier \u2014 pay-per-call AI inference workloads.",
       "keywords": [
         "ai inference",
         "llm api",
@@ -205,7 +218,8 @@
       "method": "POST",
       "networks": [
         "eip155:8453",
-        "eip155:137"
+        "eip155:137",
+        "solana:mainnet"
       ],
       "price": {
         "amount": "100000000",
@@ -217,10 +231,11 @@
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "assetsByNetwork": {
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "solana:mainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
       },
       "payTo": "0x87392243E196FCa85702B74343a57973294b0e5E",
-      "description": "Specialized data tier — high-value specialized data or compute.",
+      "description": "Specialized data tier \u2014 high-value specialized data or compute.",
       "keywords": [
         "specialized data",
         "premium data",
@@ -249,7 +264,8 @@
       "method": "POST",
       "networks": [
         "eip155:8453",
-        "eip155:137"
+        "eip155:137",
+        "solana:mainnet"
       ],
       "price": {
         "amount": "4999000000",
@@ -261,10 +277,11 @@
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "assetsByNetwork": {
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "solana:mainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
       },
       "payTo": "0x87392243E196FCa85702B74343a57973294b0e5E",
-      "description": "Genesis Conductor Founders License — agent-to-agent checkout. Successful payment returns a Shopify fulfillment URL for the gc-founders-license SKU.",
+      "description": "Genesis Conductor Founders License \u2014 agent-to-agent checkout. Successful payment returns a Shopify fulfillment URL for the gc-founders-license SKU.",
       "keywords": [
         "founders license",
         "agent checkout",
@@ -285,7 +302,8 @@
       "method": "POST",
       "networks": [
         "eip155:8453",
-        "eip155:137"
+        "eip155:137",
+        "solana:mainnet"
       ],
       "price": {
         "amount": "9999000000",
@@ -297,10 +315,11 @@
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "assetsByNetwork": {
         "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+        "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "solana:mainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
       },
       "payTo": "0x87392243E196FCa85702B74343a57973294b0e5E",
-      "description": "Genesis Conductor Source Exclusive — agent-to-agent checkout for one source-exclusive plugin. Successful payment returns a Shopify fulfillment URL.",
+      "description": "Genesis Conductor Source Exclusive \u2014 agent-to-agent checkout for one source-exclusive plugin. Successful payment returns a Shopify fulfillment URL.",
       "keywords": [
         "source exclusive",
         "plugin purchase",

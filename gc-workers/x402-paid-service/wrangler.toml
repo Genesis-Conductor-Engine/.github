@@ -75,3 +75,8 @@ SHOPIFY_SOURCE_EXCLUSIVE_VARIANT_ID = ""
 #   wrangler secret put CDP_BASE_RPC_URL
 # CDP Node Base: https://api.developer.coinbase.com/rpc/v1/base/<token> (never commit the token)
 MAIN_WALLET = "0x967a9C352a87D3a72baa7aD10632A7276101dBc9"  # rotated 2026-08-01; old key compromised, see LAUNCH_PLAN.md
+# Solana USDC rail — verification code exists in src/index.ts, these vars activate it
+SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+SOLANA_NETWORK = "mainnet-beta"
+# SOLANA_RPC_URL is a secret — set with: wrangler secret put SOLANA_RPC_URL
+# Fallback chain: configured URL → Alchemy Solana → public mainnet-beta
