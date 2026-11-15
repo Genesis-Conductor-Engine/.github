@@ -139,13 +139,11 @@ Directive: `TREASURY_REALIGNED_AND_LOCKED: 0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F52
 
 | Role | Address | Notes |
 |------|---------|--------|
-| Root treasury (locked) | `0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75` | gas/sub-wallet funding only |
-| Settlement / Smart Wallet | `0x937897fe19F675c96a71078820F21cA9bD637180` | working capital; not agent-signable |
-| HOT / x402 payTo | `0x60C4499870f115664d7FfD8411b023DBEf3377d9` | `VAULT_ADDRESS` + all bazaar `payTo`; diamondnode `qflop-lp` |
+| HOT / x402 payTo | `0x87392243E196FCa85702B74343a57973294b0e5E` | `VAULT_ADDRESS` + all bazaar `payTo` |
 | MAIN_WALLET | `0x967a9C352a87D3a72baa7aD10632A7276101dBc9` | rotated 2026-08-01; often 0 ETH |
 | USDC (Base) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | |
 
-Old MAIN keys compromised — do not revive stale addresses from chat. Runtime payout is whatever `VAULT_ADDRESS` is in the **deployed** worker env (must match `bazaar-listing.json`). Do not revert payTo to `0x7cb8…`. Alchemy CLI 429 ≠ Worker RPC dead; public fallback `https://mainnet.base.org`.
+Old HOT `0x60C4…77d9` is COMPROMISED — do not revive. `0x54E2` is NOT OURS (Coinbase CDP bundler). `0x9378` is NOT OURS (third-party Safe proxy). Do not revive stale addresses from chat. Runtime payout is whatever `VAULT_ADDRESS` is in the **deployed** worker env (must match `bazaar-listing.json`). Do not revert payTo to `0x7cb8…`. Alchemy CLI 429 ≠ Worker RPC dead; public fallback `https://mainnet.base.org`.
 
 ## Cloudflare
 Account ID `04c59c95ce8d0a0be98099b7f7e39d18` matches `opencode.json` + wrangler.

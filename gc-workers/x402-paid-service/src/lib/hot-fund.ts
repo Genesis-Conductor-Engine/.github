@@ -3,7 +3,7 @@
  * CSW to HOT. This page does not sign. The CSW owner still approves.
  */
 
-export const HOT_ADDRESS = '0x60C4499870f115664d7FfD8411b023DBEf3377d9';
+export const HOT_ADDRESS = '0x87392243E196FCa85702B74343a57973294b0e5E';
 export const SETTLEMENT_CSW = '0x937897fe19F675c96a71078820F21cA9bD637180';
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 export const HOT_FUND_USD = '100';

@@ -65,7 +65,7 @@ The `TIERS` array in `index.ts` is the single source for pricing, paths, and des
 
 `payTo` is set in **both** `wrangler.toml` (`VAULT_ADDRESS`) and `bazaar-listing.json` (7 separate fields). `bazaar-listing.json` is the hand-maintained public discovery listing — it is what tells paying agents where to send money, and nothing generates it. **Changing one without the other silently routes real revenue to the old address.** Grep the full old address across the package after any rotation.
 
-`VAULT_ADDRESS` / payTo is HOT `0x60C4499870f115664d7FfD8411b023DBEf3377d9` (signable via diamondnode `qflop-lp`). The Worker still never signs with it — the payer signs EIP-3009; the facilitator settles. An **empty HOT is not the resting state**; flywheel USDC should land here. Gas alerts still apply to signers (`MAIN_WALLET`, and HOT if it starts sending). Settlement working capital `0x9378…` is a Coinbase Smart Wallet — not agent-signable.
+`VAULT_ADDRESS` / payTo is HOT `0x87392243E196FCa85702B74343a57973294b0e5E`. The Worker never signs with it — the payer signs EIP-3009; the facilitator settles. An **empty HOT is not the resting state**; flywheel USDC should land here. Gas alerts still apply to signers (`MAIN_WALLET`, and HOT if it starts sending). Old HOT `0x60C4…77d9` is COMPROMISED — do not revive. `0x54E2` is NOT OURS (Coinbase bundler). `0x9378` is NOT OURS (third-party Safe).
 
 Settlement requires live `CDP_API_KEY_ID` + `CDP_API_KEY_SECRET` when `X402_FACILITATOR_MODE=cdp`; placeholders fail with `Invalid Ed25519 key length`.
 

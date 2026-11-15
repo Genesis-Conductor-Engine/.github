@@ -1211,7 +1211,7 @@ export default {
     if (pathname === '/api/alchemy/status' && request.method === 'GET') {
       const report = await probeAlchemySurfaces(
         env.ALCHEMY_API_KEY,
-        env.VAULT_ADDRESS || env.MAIN_WALLET || '0x60C4499870f115664d7FfD8411b023DBEf3377d9',
+        env.VAULT_ADDRESS || env.MAIN_WALLET || '0x87392243E196FCa85702B74343a57973294b0e5E',
       );
       return Response.json(report, { status: report.ok ? 200 : 503 });
     }

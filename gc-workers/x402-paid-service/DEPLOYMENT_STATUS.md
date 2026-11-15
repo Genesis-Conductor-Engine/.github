@@ -77,7 +77,7 @@ The CDP_API_KEY_SECRET should be a base64-encoded Ed25519 private key (64 bytes)
    - Expected format: CDP_API_KEY_ID = UUID string, CDP_API_KEY_SECRET = base64-encoded Ed25519 private key
 
 2. **VAULT Wallet Funding**
-   - VAULT_ADDRESS: `0x60C4499870f115664d7FfD8411b023DBEf3377d9`
+   - VAULT_ADDRESS: `0x87392243E196FCa85702B74343a57973294b0e5E`
    - Needs USDC on Base network (chain ID 8453)
    - Required for x402 settlements and autopay workflow
    - Recommended: Fund with at least $100 USDC
@@ -87,7 +87,7 @@ The CDP_API_KEY_SECRET should be a base64-encoded Ed25519 private key (64 bytes)
    - The autopay script expects the VAULT private key at: `vault:x402-worker:VAULT_PRIVATE_KEY`
    - This needs to be added to macOS Keychain on diamondnode
    - Command: `security add-generic-password -a diamondnode -s "vault:x402-worker:VAULT_PRIVATE_KEY" -w "<private_key_hex>"`
-   - **WARNING**: The private key for 0x60C4499870f115664d7FfD8411b023DBEf3377d9 is compromised according to LAUNCH_PLAN.md. A new VAULT wallet should be created and the address updated.
+   - **WARNING**: The private key for 0x87392243E196FCa85702B74343a57973294b0e5E is compromised according to LAUNCH_PLAN.md. A new VAULT wallet should be created and the address updated.
 
 ## 📋 Recommended Next Steps
 
@@ -98,7 +98,7 @@ The CDP_API_KEY_SECRET should be a base64-encoded Ed25519 private key (64 bytes)
 4. Verify facilitator mode works: `curl https://x402-paid-service.iholt.workers.dev/health/facilitator`
 
 ### For Autopay Loop
-1. Create new VAULT wallet (do NOT use compromised 0x60C4... address)
+1. VAULT wallet rotated to 0x8739...0e5E (0x60C4 was compromised)
 2. Update VAULT_ADDRESS in wrangler.toml
 3. Fund new VAULT with USDC on Base
 4. Add VAULT private key to Keychain on diamondnode
@@ -152,7 +152,7 @@ tail -f ~/logs/alchemy-autopay-cron.log
 | CDP_API_KEY_SECRET | ⚠️ Placeholder | Needs actual Ed25519 key |
 | ALCHEMY_API_KEY | ✅ Set | Working |
 | BASE_RPC_URL | ✅ Set | Working |
-| VAULT wallet | ⚠️ Needs funding | 0x60C4...77d9 on Base |
+| VAULT wallet | ⚠️ Needs funding | 0x8739...0e5E on Base (rotated) |
 | Autopay scripts | ✅ Deployed | On diamondnode |
 | Cron entry | ✅ Configured | Hourly at :00 |
 | Vibe hook | ✅ Created | Auto-triggers on relevant commands |

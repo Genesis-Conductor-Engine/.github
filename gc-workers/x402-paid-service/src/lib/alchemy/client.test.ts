@@ -16,11 +16,11 @@ describe('alchemy urls', () => {
   it('builds a fleet USDC log subscribe (not a network-wide pending swarm)', () => {
     const sub = fleetUsdcLogSubscribe(
       '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-      ['0x60C4499870f115664d7FfD8411b023DBEf3377d9'],
+      ['0x87392243E196FCa85702B74343a57973294b0e5E'],
     );
     expect(sub.method).toBe('eth_subscribe');
     expect(sub.params[0]).toBe('logs');
-    expect(sub.addresses[0]).toBe('0x60c4499870f115664d7ffd8411b023dbef3377d9');
+    expect(sub.addresses[0]).toBe('0x87392243e196fca85702b74343a57973294b0e5e');
   });
 });
 
@@ -28,7 +28,7 @@ describe('probeAlchemySurfaces', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('fails closed when the key is missing', async () => {
-    const report = await probeAlchemySurfaces(undefined, '0x60C4499870f115664d7FfD8411b023DBEf3377d9');
+    const report = await probeAlchemySurfaces(undefined, '0x87392243E196FCa85702B74343a57973294b0e5E');
     expect(report.ok).toBe(false);
     expect(report.key_configured).toBe(false);
   });
@@ -56,7 +56,7 @@ describe('probeAlchemySurfaces', () => {
       if (method === 'getSlot') return Response.json({ result: 123 });
       return Response.json({ result: null });
     }));
-    const report = await probeAlchemySurfaces('test-key', '0x60C4499870f115664d7FfD8411b023DBEf3377d9');
+    const report = await probeAlchemySurfaces('test-key', '0x87392243E196FCa85702B74343a57973294b0e5E');
     expect(report.key_configured).toBe(true);
     expect(report.ok).toBe(true);
     const names = report.probes.map((p) => p.name);

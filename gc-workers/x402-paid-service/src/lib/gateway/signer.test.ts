@@ -79,7 +79,7 @@ describe("key custody", () => {
 
 describe("forbidden-address guard", () => {
   it("names the revenue vault and the main wallet, exactly as wrangler.toml does", () => {
-    expect(VAULT_ADDRESS).toBe("0x60C4499870f115664d7FfD8411b023DBEf3377d9");
+    expect(VAULT_ADDRESS).toBe("0x87392243E196FCa85702B74343a57973294b0e5E");
     expect(MAIN_WALLET).toBe("0x967a9C352a87D3a72baa7aD10632A7276101dBc9");
     expect(FORBIDDEN_SIGNER_ADDRESSES).toContain(VAULT_ADDRESS);
     expect(FORBIDDEN_SIGNER_ADDRESSES).toContain(MAIN_WALLET);

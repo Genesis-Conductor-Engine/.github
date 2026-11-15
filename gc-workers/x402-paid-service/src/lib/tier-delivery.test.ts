@@ -6,7 +6,7 @@ import {
   type TierDeliveryContext,
 } from './tier-delivery';
 
-const PAYER = '0x60C4499870f115664d7FfD8411b023DBEf3377d9';
+const PAYER = '0x87392243E196FCa85702B74343a57973294b0e5E';
 const OTHER = '0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8';
 
 function ctx(over: Partial<TierDeliveryContext> = {}): TierDeliveryContext {

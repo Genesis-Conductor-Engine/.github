@@ -39,7 +39,7 @@ import type { Hex } from "./types";
 export const GATEWAY_KEY_SECRET = "ALCHEMY_GATEWAY_PRIVATE_KEY";
 
 /** Receive-only revenue address. No private key for it exists anywhere. */
-export const VAULT_ADDRESS = "0x60C4499870f115664d7FfD8411b023DBEf3377d9";
+export const VAULT_ADDRESS = "0x87392243E196FCa85702B74343a57973294b0e5E";
 /** Existing gas-monitored signer. Deliberately NOT reused for the gateway. */
 export const MAIN_WALLET = "0x967a9C352a87D3a72baa7aD10632A7276101dBc9";
 

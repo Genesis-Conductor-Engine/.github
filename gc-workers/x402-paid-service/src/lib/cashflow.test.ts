@@ -26,8 +26,8 @@ describe('settlement multichain USDC', () => {
     expect(SETTLEMENT_USDC_CHAINS.find((c) => c.id === 'base')?.token).toBe(USDC_BASE);
     expect(SETTLEMENT_USDC_CHAINS.find((c) => c.id === 'ethereum')?.token).toBe(USDC_ETH);
     expect(SETTLEMENT_USDC_CHAINS.find((c) => c.id === 'arbitrum')?.token).toBe(USDC_ARB);
-    expect(FLEET.find((w) => w.id === 'settlement')?.address).toBe(
-      '0x937897fe19F675c96a71078820F21cA9bD637180',
+    expect(FLEET.find((w) => w.id === 'hot')?.address).toBe(
+      '0x87392243E196FCa85702B74343a57973294b0e5E',
     );
   });
 
@@ -61,13 +61,13 @@ describe('computeRoi', () => {
 
 describe('parseWebhook', () => {
   it('classifies Alchemy ADDRESS_ACTIVITY against the fleet', () => {
-    const settlement = FLEET.find((w) => w.id === 'settlement')!.address;
+    const hot = FLEET.find((w) => w.id === 'hot')!.address;
     const events = parseWebhook({
       type: 'ADDRESS_ACTIVITY',
       event: {
         activity: [
-          { fromAddress: settlement, toAddress: '0x44b86c7200000000000000000000000000000001', value: 99.7, asset: 'USDC', hash: '0xabc', category: 'token' },
-          { fromAddress: '0x1111111111111111111111111111111111111111', toAddress: settlement, value: 10, asset: 'USDC', hash: '0xdef', category: 'token' },
+          { fromAddress: hot, toAddress: '0x44b86c7200000000000000000000000000000001', value: 99.7, asset: 'USDC', hash: '0xabc', category: 'token' },
+          { fromAddress: '0x1111111111111111111111111111111111111111', toAddress: hot, value: 10, asset: 'USDC', hash: '0xdef', category: 'token' },
         ],
       },
     });
@@ -207,9 +207,9 @@ describe('resolveCashflowSnapshot', () => {
     await kv.put(SNAPSHOT_KEY, JSON.stringify({
       ...seededSnap(),
       wallets: [{
-        id: 'settlement',
-        role: 's',
-        address: FLEET.find((w) => w.id === 'settlement')!.address,
+        id: 'hot',
+        role: 'HOT_X402 / LP owner',
+        address: FLEET.find((w) => w.id === 'hot')!.address,
         eth: 0,
         usdc: 214952.391995,
         usd: 214952.391995,
@@ -221,8 +221,8 @@ describe('resolveCashflowSnapshot', () => {
       }],
     }));
     const snap = await refreshSnapshot(kv, 'https://mainnet.base.org');
-    const settlement = snap.wallets.find((w) => w.id === 'settlement');
-    expect(settlement?.chains?.find((c) => c.id === 'arbitrum')?.usdc).toBeCloseTo(54437.421675, 4);
+    const hot = snap.wallets.find((w) => w.id === 'hot');
+    expect(hot?.chains?.find((c) => c.id === 'arbitrum')?.usdc).toBeCloseTo(54437.421675, 4);
   });
 
   it('returns the KV snapshot immediately and refreshes in the background', async () => {
@@ -271,7 +271,7 @@ describe('buildCashflowHtml LCP', () => {
       roi: computeRoi(1),
       vendors: [...VENDORS],
       ledger: [],
-      assumptions: ['x402 payTo is HOT 0x60C4'],
+      assumptions: ['x402 payTo is HOT 0x8739'],
       freshness: 'cached',
       marks: {
         eth_source: 'dexpaprika',
@@ -285,14 +285,14 @@ describe('buildCashflowHtml LCP', () => {
     expect(html).not.toContain('0x7cb8');
   });
 
-  it('renders Ethereum / Base / Arbitrum USDC on the settlement card', () => {
+  it('renders Ethereum / Base / Arbitrum USDC on the hot wallet card', () => {
     const html = buildCashflowHtml({
       generated_at: '2026-08-15T20:00:00.000Z',
       eth_usd: 1800,
       wallets: [{
-        id: 'settlement',
-        role: 'Settlement / working capital (CSW, ETH+Base+Arb)',
-        address: '0x937897fe19F675c96a71078820F21cA9bD637180',
+        id: 'hot',
+        role: 'HOT_X402 / LP owner',
+        address: '0x87392243E196FCa85702B74343a57973294b0e5E',
         eth: 0,
         usdc: 214952.391995,
         usd: 214952.391995,

@@ -544,7 +544,7 @@ describe('x402 Worker paid tier routes', () => {
     const { response } = await dispatch('/api/specialized', {
       method: 'POST',
       headers: { 'PAYMENT-SIGNATURE': 'signed-payment', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' }),
+      body: JSON.stringify({ address: '0x87392243E196FCa85702B74343a57973294b0e5E' }),
     });
 
     expect(response.status).toBe(200);
@@ -561,7 +561,7 @@ describe('x402 Worker paid tier routes', () => {
     expect(paid.result.receipt.tier).toBe('specialized');
     expect(paid.result.receipt.charged_usd).toBe('100.00');
     expect(paid.result.enrichment.address).toBe(
-      '0x60c4499870f115664d7ffd8411b023dbef3377d9',
+      '0x87392243e196fca85702b74343a57973294b0e5e',
     );
     expect(paid.result.enrichment.source).toBe('alchemy');
     // No ALCHEMY_API_KEY in the test env, so it must degrade loudly rather than
@@ -829,7 +829,7 @@ describe('x402 Worker cashflow surface', () => {
     expect(response.headers.get('Content-Type')).toContain('text/html');
     expect(response.headers.get('Cross-Origin-Opener-Policy')).toBe('same-origin-allow-popups');
     const html = await response.text();
-    expect(html).toContain('0x60C4499870f115664d7FfD8411b023DBEf3377d9');
+    expect(html).toContain('0x87392243E196FCa85702B74343a57973294b0e5E');
     expect(html).toContain('100 USDC');
     expect(html).toContain('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
   });

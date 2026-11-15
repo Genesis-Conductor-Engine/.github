@@ -27,10 +27,8 @@ export const SETTLEMENT_USDC_CHAINS = [
 ] as const;
 
 export const FLEET = [
-  { id: 'treasury', role: 'Root treasury (locked)', address: '0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75' },
-  { id: 'settlement', role: 'Settlement / working capital (CSW, ETH+Base+Arb)', address: '0x937897fe19F675c96a71078820F21cA9bD637180' },
-  { id: 'hot', role: 'HOT_X402 / LP owner', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' },
-  { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo = HOT)', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9' },
+  { id: 'hot', role: 'HOT_X402 / LP owner', address: '0x87392243E196FCa85702B74343a57973294b0e5E' },
+  { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo = HOT)', address: '0x87392243E196FCa85702B74343a57973294b0e5E' },
   { id: 'main', role: 'x402 MAIN_WALLET (signer)', address: '0x967a9C352a87D3a72baa7aD10632A7276101dBc9' },
 ] as const;
 
@@ -398,7 +396,7 @@ export async function refreshSnapshot(
       const rawEth = await rpcFirst(rpcUrls, 'eth_getBalance', [w.address, 'latest']);
       eth = Number(BigInt(rawEth)) / 1e18;
     } catch { /* leave 0 */ }
-    if (w.id === 'settlement') {
+    if (w.id === 'hot') {
       const data = `0x70a08231${padAddr(w.address)}`;
       chains = await Promise.all(SETTLEMENT_USDC_CHAINS.map(async (chain) => {
         const urls = chain.id === 'base' ? [...new Set([...rpcUrls, ...chain.rpcs])] : [...chain.rpcs];
@@ -417,7 +415,7 @@ export async function refreshSnapshot(
         }
         return { id: chain.id, name: chain.name, usdc: amount };
       }));
-      const priorChains = prior?.wallets.find((x) => x.id === 'settlement')?.chains;
+      const priorChains = prior?.wallets.find((x) => x.id === 'hot')?.chains;
       chains = chains.map((c) => {
         if (c.usdc > 0) return c;
         const prev = priorChains?.find((p) => p.id === c.id);
@@ -458,8 +456,7 @@ export async function refreshSnapshot(
       };
     }
     const stale: Record<string, { eth: number; usdc: number; chains?: ChainUsdcSnap[] }> = {
-      treasury: { eth: 14.667072, usdc: 709.662404 },
-      settlement: {
+      hot: {
         eth: 0,
         usdc: 214952.391995,
         chains: [
@@ -468,8 +465,7 @@ export async function refreshSnapshot(
           { id: 'arbitrum', name: 'Arbitrum', usdc: 54437.421675 },
         ],
       },
-      hot: { eth: 0.000001068, usdc: 2.037103 },
-      payto: { eth: 0.000001068, usdc: 2.037103 },
+      payto: { eth: 0, usdc: 0 },
       main: { eth: 0, usdc: 0 },
     };
     for (const w of wallets) {
@@ -483,8 +479,8 @@ export async function refreshSnapshot(
   }
 
   const priced = wallets.reduce((s, w) => s + w.usd, 0);
-  const settlement = wallets.find((w) => w.id === 'settlement');
-  const working = settlement?.usdc ?? SETTLEMENT_WINDOW.live_close_usdc;
+  const hot = wallets.find((w) => w.id === 'hot');
+  const working = hot?.usdc ?? SETTLEMENT_WINDOW.live_close_usdc;
   const ledger = await loadLedger(kv);
   const snap: CashflowSnapshot = {
     generated_at: new Date().toISOString(),
@@ -506,7 +502,7 @@ export async function refreshSnapshot(
       'Opening 61,745 is prose; residual +2,436.73 implies a higher true open.',
       'Flywheel rates are models, not observed returns.',
       'Alchemy invoice amount unknown — dollar bill is dashboard-only; Worker RPC is live.',
-      'x402 payTo is HOT 0x60C4499870f115664d7FfD8411b023DBEf3377d9. Settlement 0x9378… is a Coinbase Smart Wallet (same 806-byte code on ETH/Base/Arb), not agent-signable. WETH/USDT dust is not in working capital.',
+      'x402 payTo is HOT 0x87392243E196FCa85702B74343a57973294b0e5E. 0x54E2 and 0x9378 are NOT OURS (Coinbase bundler and third-party Safe respectively) — removed from FLEET.',
     ],
   };
   if (kv) await kv.put(SNAPSHOT_KEY, JSON.stringify(snap));

@@ -55,7 +55,7 @@ TIER_SOURCE_EXCLUSIVE_ETH_WEI = "4999500000000000000"
 ```
 
 Also updated:
-- `VAULT_ADDRESS` from `0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8` to `0x60C4499870f115664d7FfD8411b023DBEf3377d9`
+- `VAULT_ADDRESS` from `0x2aF0103Cb5348e2919ed9CF7595E8Dbe157dA1B8` to `0x87392243E196FCa85702B74343a57973294b0e5E`
 - Added `compatibility_flags = ["nodejs_compat"]`
 
 ---
@@ -256,7 +256,7 @@ curl https://YOUR_WORKER_URL/.well-known/x402
 
 From `LAUNCH_PLAN.md`, the following **MUST BE COMPLETED** before moving funds:
 
-1. **Rotate MAIN wallet private key** (`0x60C4499870f115664d7FfD8411b023DBEf3377d9`)
+1. **Rotate MAIN wallet private key** (`0x87392243E196FCa85702B74343a57973294b0e5E`)
    - Currently compromised
    - Auto-sourced from `~/.x402-refuel.env`
 

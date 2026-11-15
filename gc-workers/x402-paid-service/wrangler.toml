@@ -30,7 +30,7 @@ dataset = "x402_engagement_metrics"
 X402_FACILITATOR_MODE = "cdp"
 # x402 payTo = HOT. Worker only names this address (never signs). Must match all
 # 7 payTo fields in bazaar-listing.json. Do not revert to 0x7cb8….
-VAULT_ADDRESS = "0x60C4499870f115664d7FfD8411b023DBEf3377d9"
+VAULT_ADDRESS = "0x87392243E196FCa85702B74343a57973294b0e5E"
 USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 CHAIN_ID = "8453"
 # Legacy single-tier price (backwards compat for /api/execute)
