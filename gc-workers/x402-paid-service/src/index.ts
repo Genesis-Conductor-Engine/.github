@@ -1438,7 +1438,7 @@ export default {
     if (pathname.startsWith('/.well-known/ai-tool/')) {
       const slug = pathname.replace('/.well-known/ai-tool/', '').replace(/\.json$/, '');
       const origin = `https://${hostname}`;
-      const creator = '0x6059aa12c173b4036e2e79f1900d7e10536efd6c';
+      const creator = '0xcede37eb8146a43c10fba19d5e1be1c841c18d56';
       const recipient = env.VAULT_ADDRESS.toLowerCase();
       const manifests: Record<string, object> = {
         'gc-x402-discovery': {
