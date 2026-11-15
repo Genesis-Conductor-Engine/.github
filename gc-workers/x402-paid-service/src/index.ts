@@ -1438,12 +1438,13 @@ export default {
     if (pathname.startsWith('/.well-known/ai-tool/')) {
       const slug = pathname.replace('/.well-known/ai-tool/', '').replace(/\.json$/, '');
       const origin = `https://${hostname}`;
+      const creator = env.VAULT_ADDRESS.toLowerCase();
       const manifests: Record<string, object> = {
         'gc-x402-discovery': {
           name: 'Genesis Conductor x402 Discovery',
           description: 'One-cent USDC micropayment smoke test on Base. Returns attested settlement receipt. Use to verify x402 payment flow before higher-tier calls.',
           endpoint: `${origin}/api/execute`,
-          creatorAddress: env.VAULT_ADDRESS,
+          creatorAddress: creator,
           inputs: {
             type: 'object',
             properties: {
@@ -1462,21 +1463,23 @@ export default {
               settlement_tx: { type: 'string', description: 'Base settlement transaction hash' },
             },
           },
-          pricing: {
+          pricing: [{
             model: 'pay_per_call',
+            protocol: 'x402',
+            asset: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
             amount: '10000',
             currency: 'USDC',
             decimals: 6,
             network: 'eip155:8453',
-            recipient: env.VAULT_ADDRESS,
-          },
+            recipient: creator,
+          }],
           tags: ['x402', 'micropayment', 'base', 'usdc', 'settlement-test'],
         },
         'gc-x402-pro': {
           name: 'Genesis Conductor Pro API',
           description: 'Authenticated agent-to-agent execution with $1.00 USDC per-call billing on Base. No account, no API key, no subscription.',
           endpoint: `${origin}/api/pro`,
-          creatorAddress: env.VAULT_ADDRESS,
+          creatorAddress: creator,
           inputs: {
             type: 'object',
             properties: {
@@ -1496,14 +1499,16 @@ export default {
               settlement_tx: { type: 'string' },
             },
           },
-          pricing: {
+          pricing: [{
             model: 'pay_per_call',
+            protocol: 'x402',
+            asset: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
             amount: '1000000',
             currency: 'USDC',
             decimals: 6,
             network: 'eip155:8453',
-            recipient: env.VAULT_ADDRESS,
-          },
+            recipient: creator,
+          }],
           tags: ['x402', 'pro', 'agent-api', 'base', 'usdc'],
         },
       };
