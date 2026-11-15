@@ -347,8 +347,9 @@ async function verifySolanaUsdcTransfer(
     const post = json.result.meta?.postTokenBalances ?? [];
 
     function balanceFor(balances: TokenBalance[]): bigint {
-      const entry = balances.find(b => b.mint === usdcMint && b.owner === vaultOwner);
-      return BigInt(entry?.uiTokenAmount.amount ?? '0');
+      return balances
+        .filter(b => b.mint === usdcMint && b.owner === vaultOwner)
+        .reduce((sum, b) => sum + BigInt(b.uiTokenAmount.amount ?? '0'), 0n);
     }
 
     const delta = balanceFor(post) - balanceFor(pre);
