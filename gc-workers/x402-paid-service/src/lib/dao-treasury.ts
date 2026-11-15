@@ -12,16 +12,16 @@
  */
 
 // ── Multi-chain treasury addresses ──────────────────────────────────
+// HOT address is duplicated here as a fallback default. The single source of
+// truth is env.VAULT_ADDRESS (wrangler.toml) — always prefer it at runtime.
 
 export const TREASURY = {
   base: {
-    hot: '0x87392243E196FCa85702B74343a57973294b0e5E',
     usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     chainId: 8453,
     network: 'eip155:8453',
   },
   polygon: {
-    hot: '0x87392243E196FCa85702B74343a57973294b0e5E',
     usdc: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
     chainId: 137,
     network: 'eip155:137',

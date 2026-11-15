@@ -14,6 +14,13 @@ import {
 } from './lib/cashflow';
 import { probeAlchemySurfaces } from './lib/alchemy/client';
 import { buildHotFundHtml } from './lib/hot-fund';
+import {
+  loadDaoParams,
+  splitRevenue,
+  computeAccumulationPath,
+  realisticFirstMonthModel,
+} from './lib/dao-treasury';
+import { findSwapRoute, getBalance, WQFLOP, type RpcProvider } from './lib/wqflop-swap';
 import { isAllowedAlchemyRpcUrl, isAllowedCdpBaseRpcUrl } from './lib/rpc-allow';
 import { deliverTier } from './lib/tier-delivery';
 import { quoteSponsorship } from './lib/sponsor-userop';
@@ -1442,6 +1449,62 @@ export default {
         `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`,
         { headers: { 'Content-Type': 'application/xml', 'Cache-Control': 'public, max-age=86400' } },
       );
+    }
+
+    // ── DAO governance status (read-only) ─────────────────────────────
+    if (pathname === '/api/dao/status' && request.method === 'GET') {
+      const kv = env.API_KEYS;
+      const params = kv ? await loadDaoParams(kv) : null;
+      const model = realisticFirstMonthModel();
+      const path = computeAccumulationPath(0, 2184);
+      return Response.json({
+        dao_params: params ?? 'no_kv',
+        profitability_model: { ...model, note: 'hypothetical — zero settled revenue to date' },
+        accumulation_path: path,
+        facilitator: (env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) ? 'cdp' : 'public_testnet_only',
+        vault: env.VAULT_ADDRESS,
+      }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
+    if (pathname === '/api/dao/split' && request.method === 'GET') {
+      const kv = env.API_KEYS;
+      const params = kv ? await loadDaoParams(kv) : null;
+      if (!params) return Response.json({ error: 'KV not available' }, { status: 503 });
+      const grossStr = new URL(request.url).searchParams.get('gross');
+      const gross = grossStr ? Number(grossStr) : 100;
+      return Response.json(splitRevenue(gross, params));
+    }
+
+    // ── wQFLOP swap status (read-only) ──────────────────────────────────
+    if (pathname === '/api/wqflop/status' && request.method === 'GET') {
+      try {
+        const rpcUrl = cashflowRpc(env);
+        const rpc: RpcProvider = {
+          async call(to: string, data: string): Promise<string> {
+            const resp = await fetch(rpcUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }),
+            });
+            const json = (await resp.json()) as { result?: string; error?: { message: string } };
+            if (json.error) throw new Error(json.error.message);
+            return json.result ?? '0x';
+          },
+          async estimateGas(): Promise<bigint> {
+            return 0n;
+          },
+        };
+        const route = await findSwapRoute(rpc);
+        const balance = await getBalance(rpc, WQFLOP, env.VAULT_ADDRESS);
+        return Response.json({
+          wqflop_token: WQFLOP,
+          vault_balance_raw: balance.toString(),
+          swap_route: route,
+          note: 'wQFLOP has 0 pools / no price on DexPaprika — paper token, not working capital',
+        });
+      } catch (e) {
+        return Response.json({ error: String(e) }, { status: 502 });
+      }
     }
 
     // Paid tier routes
