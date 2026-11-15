@@ -1438,7 +1438,8 @@ export default {
     if (pathname.startsWith('/.well-known/ai-tool/')) {
       const slug = pathname.replace('/.well-known/ai-tool/', '').replace(/\.json$/, '');
       const origin = `https://${hostname}`;
-      const creator = env.VAULT_ADDRESS.toLowerCase();
+      const creator = '0x6059aa12c173b4036e2e79f1900d7e10536efd6c';
+      const recipient = env.VAULT_ADDRESS.toLowerCase();
       const manifests: Record<string, object> = {
         'gc-x402-discovery': {
           name: 'Genesis Conductor x402 Discovery',
@@ -1471,7 +1472,7 @@ export default {
             currency: 'USDC',
             decimals: 6,
             network: 'eip155:8453',
-            recipient: creator,
+            recipient: recipient,
           }],
           tags: ['x402', 'micropayment', 'base', 'usdc', 'settlement-test'],
         },
@@ -1507,7 +1508,7 @@ export default {
             currency: 'USDC',
             decimals: 6,
             network: 'eip155:8453',
-            recipient: creator,
+            recipient: recipient,
           }],
           tags: ['x402', 'pro', 'agent-api', 'base', 'usdc'],
         },
