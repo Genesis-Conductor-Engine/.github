@@ -137,7 +137,7 @@ export interface KvLike {
   put(key: string, value: string): Promise<void>;
 }
 
-export function computeRoi(workingCapitalUsdc: number): RoiModel {
+export function computeRoi(workingCapitalUsdc: number, flywheelBaseUsdc = workingCapitalUsdc): RoiModel {
   const w = SETTLEMENT_WINDOW;
   const proseRoi = w.net_usdc / w.opening_prose_usdc;
   const impliedOpen = w.opening_prose_usdc + w.residual_usdc;
@@ -146,7 +146,7 @@ export function computeRoi(workingCapitalUsdc: number): RoiModel {
   const flywheel = [0.005, 0.02, 0.05].map((weekly_rate) => ({
     weekly_rate,
     weeks,
-    future_usdc: workingCapitalUsdc * (1 + weekly_rate) ** weeks,
+    future_usdc: flywheelBaseUsdc * (1 + weekly_rate) ** weeks,
     label: `${(weekly_rate * 100).toFixed(1)}%/wk × ${weeks}w (model, not observed)`,
   }));
   return {
@@ -388,6 +388,11 @@ export async function refreshSnapshot(
 
   const prior = await loadSnapshot(kv);
   const rpcUrls = [...new Set([rpcUrl, PUBLIC_BASE_RPC, 'https://1rpc.io/base'])];
+  // "The RPC answered" is NOT the same as "a wallet holds a balance". The
+  // rotated fleet is legitimately all-zero on Base, and treating that as an
+  // RPC failure is what made refreshSnapshot keep resurrecting the
+  // pre-rotation KV snapshot (old treasury/settlement/hot wallets) forever.
+  let rpcReachable = false;
   const wallets: WalletSnap[] = await Promise.all(FLEET.map(async (w) => {
     let eth = 0;
     let usdc = 0;
@@ -395,6 +400,7 @@ export async function refreshSnapshot(
     try {
       const rawEth = await rpcFirst(rpcUrls, 'eth_getBalance', [w.address, 'latest']);
       eth = Number(BigInt(rawEth)) / 1e18;
+      rpcReachable = true;
     } catch { /* leave 0 */ }
     if (w.id === 'hot') {
       const data = `0x70a08231${padAddr(w.address)}`;
@@ -415,7 +421,15 @@ export async function refreshSnapshot(
         }
         return { id: chain.id, name: chain.name, usdc: amount };
       }));
-      const priorChains = prior?.wallets.find((x) => x.id === 'hot')?.chains;
+      const priorHot = prior?.wallets.find((x) => x.id === 'hot');
+      // Only carry chains forward from a prior snapshot that was for THIS
+      // address. The pre-rotation snapshot was for the old (compromised)
+      // HOT 0x60C449...; inheriting its balances onto the new HOT would
+      // misattribute another wallet's USDC.
+      const priorChains =
+        priorHot && priorHot.address.toLowerCase() === w.address.toLowerCase()
+          ? priorHot.chains
+          : undefined;
       chains = chains.map((c) => {
         if (c.usdc > 0) return c;
         const prev = priorChains?.find((p) => p.id === c.id);
@@ -441,9 +455,18 @@ export async function refreshSnapshot(
     };
   }));
 
-  const rpcLive = wallets.some((w) => w.eth > 0 || w.usdc > 0);
-  if (!rpcLive) {
-    if (prior && prior.priced_usd > 0) {
+  if (!rpcReachable) {
+    // The RPC itself did not answer. A prior snapshot may still be shown,
+    // but ONLY if it was built from the SAME fleet: the KV slot can hold a
+    // pre-rotation snapshot (old treasury/settlement/hot wallets), and
+    // serving that verbatim would resurrect addresses we do not own.
+    const priorMatchesFleet =
+      prior &&
+      prior.wallets.length === FLEET.length &&
+      FLEET.every((w) =>
+        prior.wallets.some((p) => p.id === w.id && p.address.toLowerCase() === w.address.toLowerCase()),
+      );
+    if (priorMatchesFleet && prior.priced_usd > 0) {
       return {
         ...prior,
         generated_at: new Date().toISOString(),
@@ -455,16 +478,18 @@ export async function refreshSnapshot(
         ],
       };
     }
+    // Last operator-verified balances for the CURRENT fleet. These were
+    // verified 2026-11-16 on Base 8453, Ethereum mainnet and Arbitrum One:
+    // the rotated HOT 0x87392243... and MAIN 0x967a9C35... both hold 0 ETH
+    // and 0 native USDC on every chain.
+    //
+    // The previous values here (USDC 214,952.39 = Base 53,651.10 + Ethereum
+    // 106,863.87 + Arbitrum 54,437.42) were the balances of the PRE-rotation
+    // settlement CSW 0x937897fe... — a third-party OpenZeppelin Transparent
+    // proxy under a Safe 5-of-7 that we do not hold keys for. They must not
+    // be attributed to a wallet we own, so they are not carried forward.
     const stale: Record<string, { eth: number; usdc: number; chains?: ChainUsdcSnap[] }> = {
-      hot: {
-        eth: 0,
-        usdc: 214952.391995,
-        chains: [
-          { id: 'base', name: 'Base', usdc: 53651.098082 },
-          { id: 'ethereum', name: 'Ethereum', usdc: 106863.872238 },
-          { id: 'arbitrum', name: 'Arbitrum', usdc: 54437.421675 },
-        ],
-      },
+      hot: { eth: 0, usdc: 0 },
       payto: { eth: 0, usdc: 0 },
       main: { eth: 0, usdc: 0 },
     };
@@ -480,7 +505,13 @@ export async function refreshSnapshot(
 
   const priced = wallets.reduce((s, w) => s + w.usd, 0);
   const hot = wallets.find((w) => w.id === 'hot');
-  const working = hot?.usdc ?? SETTLEMENT_WINDOW.live_close_usdc;
+  // Working capital is the LIVE balance we can actually spend. The rotated
+  // HOT wallet currently holds 0 USDC, so this reports 0 — not the old CSW's
+  // 706k, which belongs to a third-party Safe proxy.
+  const working = hot?.usdc ?? 0;
+  // The flywheel stays a model over the OBSERVED window close, so it keeps
+  // its analytical value without claiming we hold that balance today.
+  const flywheelBase = working > 0 ? working : SETTLEMENT_WINDOW.live_close_usdc;
   const ledger = await loadLedger(kv);
   const snap: CashflowSnapshot = {
     generated_at: new Date().toISOString(),
@@ -489,20 +520,23 @@ export async function refreshSnapshot(
     priced_usd: priced,
     working_capital_usdc: working,
     window: SETTLEMENT_WINDOW,
-    roi: computeRoi(working),
+    roi: computeRoi(working, flywheelBase),
     vendors: VENDORS,
     ledger,
     freshness: 'live',
     marks,
     assumptions: [
-      ...(rpcLive ? [] : ['RPC degraded: last operator-verified snapshot used for balances.']),
+      ...(rpcReachable
+        ? []
+        : ['RPC degraded: last operator-verified snapshot used for balances.']),
       `ETH mark: ${marks.eth_source} spot (fallback ${FALLBACK_ETH_USD} if fetch fails).`,
       `USDC = $1. ${marks.wqflop.note}`,
-      'Window PnL is Base settlement USDC only (Dune 2026-08-09..15). Working capital sums native USDC on Ethereum + Base + Arbitrum for the same CSW.',
+      'Window PnL is Base settlement USDC only (Dune 2026-08-09..15). The observed window ran through the settlement CSW 0x937897fe… which is NOT ours.',
       'Opening 61,745 is prose; residual +2,436.73 implies a higher true open.',
+      `Working capital is the LIVE spendable balance of our own fleet (currently $${working.toFixed(2)} USDC — the rotated HOT holds 0). The flywheel model above is computed on the observed window close (${SETTLEMENT_WINDOW.live_close_usdc.toFixed(2)} USDC), not on a balance we hold.`,
       'Flywheel rates are models, not observed returns.',
       'Alchemy invoice amount unknown — dollar bill is dashboard-only; Worker RPC is live.',
-      'x402 payTo is HOT 0x87392243E196FCa85702B74343a57973294b0e5E. 0x54E2 and 0x9378 are NOT OURS (Coinbase bundler and third-party Safe respectively) — removed from FLEET.',
+      'x402 payTo is HOT 0x87392243E196FCa85702B74343a57973294b0e5E. 0x54E2 and 0x9378 are NOT OURS and are excluded from FLEET: 0x54E2 is a Coinbase CDP ERC-4337 bundler hot wallet (isBundlerAllowed=true on Coinbase VerifyingPaymaster 0xdcbe0c1a00e4cf24ae77c52125e6e6b4f7c6db4e; verified 2026-11-12, and an exhaustive 2026-11-15 device-bound key sweep found no key for it), and 0x9378 is a third-party OpenZeppelin Transparent proxy adminned by Safe 0x93Fde120214563894AEE2e6bB2F9060Fd79F93C7.',
     ],
   };
   if (kv) await kv.put(SNAPSHOT_KEY, JSON.stringify(snap));
@@ -520,7 +554,18 @@ export async function resolveCashflowSnapshot(
     return { snap, cache: 'miss' };
   }
   const cached = await loadSnapshot(kv);
-  if (cached && cached.priced_usd > 0) {
+  // A cached snapshot is usable if it exists and was built from the CURRENT
+  // fleet. The priced_usd > 0 test was a proxy for "this snapshot has real
+  // numbers", but the rotated fleet is legitimately all-zero, so it would
+  // disable the cache forever. The fleet check is the one that matters: a
+  // pre-rotation snapshot must never be served.
+  const cachedMatchesFleet =
+    cached &&
+    cached.wallets.length === FLEET.length &&
+    FLEET.every((w) =>
+      cached.wallets.some((p) => p.id === w.id && p.address.toLowerCase() === w.address.toLowerCase()),
+    );
+  if (cachedMatchesFleet) {
     if (waitUntil) {
       waitUntil(
         refreshSnapshot(kv, rpcUrl).catch((e) => {

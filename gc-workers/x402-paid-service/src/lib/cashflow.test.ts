@@ -162,8 +162,18 @@ describe('resolveCashflowSnapshot', () => {
     return {
       generated_at: '2026-08-15T12:00:00.000Z',
       eth_usd: 1800,
-      wallets: [],
-      priced_usd: 81993.9,
+      // Must match the CURRENT fleet: the cache gate is a fleet check, not a
+      // priced_usd check, so a snapshot for a different fleet (pre-rotation)
+      // is a miss and must never be served.
+      wallets: FLEET.map((w) => ({
+        id: w.id,
+        role: w.role,
+        address: w.address,
+        eth: 0,
+        usdc: w.id === 'hot' ? 53743.74 : 0,
+        usd: w.id === 'hot' ? 53743.74 : 0,
+      })),
+      priced_usd: 53743.74,
       working_capital_usdc: 53743.74,
       window: SETTLEMENT_WINDOW,
       roi: computeRoi(53743.74),
@@ -319,5 +329,136 @@ describe('buildCashflowHtml LCP', () => {
     expect(html).toContain('Base USDC');
     expect(html).toContain('Arbitrum USDC');
     expect(html).toContain('106,863.87');
+  });
+});
+
+describe('pre-rotation snapshot must never be resurrected', () => {
+  function memoryKv(seed?: Record<string, string>) {
+    const store = new Map<string, string>(Object.entries(seed ?? {}));
+    return {
+      get: async (k: string) => store.get(k) ?? null,
+      put: async (k: string, v: string) => { store.set(k, v); },
+    };
+  }
+
+  // Regression: the KV slot `cashflow:snapshot` held a snapshot written by
+  // the PRE-rotation code, with a 5-wallet fleet (0x54E2 Coinbase bundler,
+  // 0x9378 third-party Safe, 0x60C449 compromised HOT). refreshSnapshot
+  // used to return that snapshot verbatim whenever no wallet showed a
+  // positive balance, so the public dashboard kept reporting addresses we
+  // do not own — and never overwrote KV, so it could not self-heal.
+  const PRE_ROTATION = {
+    generated_at: '2026-08-15T12:00:00.000Z',
+    eth_usd: 1800,
+    priced_usd: 736389.72,
+    working_capital_usdc: 706338.8324,
+    window: SETTLEMENT_WINDOW,
+    roi: computeRoi(706338.8324),
+    vendors: [...VENDORS],
+    ledger: [],
+    freshness: 'live' as const,
+    marks: {
+      eth_source: 'coinpaprika' as const,
+      wqflop: { priced: false, price_usd: null, liquidity_usd: null, pools: 0, note: 'seed' },
+    },
+    wallets: [
+      { id: 'treasury', role: 'Root treasury (locked)', address: '0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75', eth: 15.61, usdc: 741.39, usd: 29271 },
+      { id: 'settlement', role: 'Settlement / working capital (CSW, ETH+Base+Arb)', address: '0x937897fe19F675c96a71078820F21cA9bD637180', eth: 0, usdc: 706338.8324, usd: 706338.8324 },
+      { id: 'hot', role: 'HOT_X402 / LP owner', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9', eth: 0.00000235, usdc: 0, usd: 0 },
+      { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo = HOT)', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9', eth: 0.00000235, usdc: 0, usd: 0 },
+      { id: 'main', role: 'x402 MAIN_WALLET (signer)', address: '0x967a9C352a87D3a72baa7aD10632A7276101dBc9', eth: 0, usdc: 0, usd: 0 },
+    ],
+    assumptions: [
+      'x402 payTo is HOT 0x60C4499870f115664d7FfD8411b023DBEf3377d9. Settlement 0x9378… is a Coinbase Smart Wallet (same 806-byte code on ETH/Base/Arb), not agent-signable.',
+      'MetaMask Gas Station 3 0xb42f812a44c22cc6b861478900401ee759ebead6 is foreign gas-sponsorship infra',
+    ],
+  };
+
+  it('does not serve a pre-rotation snapshot from cache', async () => {
+    const kv = memoryKv({ [SNAPSHOT_KEY]: JSON.stringify(PRE_ROTATION) });
+    const waitUntil = vi.fn();
+    const { snap, cache } = await resolveCashflowSnapshot(kv, 'https://mainnet.base.org', waitUntil);
+    expect(cache).toBe('miss');
+    expect(snap.wallets.map((w) => w.address)).not.toContain('0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75');
+    expect(snap.wallets.map((w) => w.address)).not.toContain('0x937897fe19F675c96a71078820F21cA9bD637180');
+    expect(snap.wallets.map((w) => w.address)).not.toContain('0x60C4499870f115664d7FfD8411b023DBEf3377d9');
+  });
+
+  it('rebuilds from the current FLEET and overwrites the poisoned KV slot', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('dexpaprika.com') && url.includes('tokens/0x4200')) {
+        return Response.json({ summary: { price_usd: 1900 } });
+      }
+      if (url.includes('dexpaprika.com')) {
+        return Response.json({ summary: { price_usd: null }, results: [] });
+      }
+      if (url.includes('coinpaprika')) {
+        return Response.json({ quotes: { USD: { price: 1910 } } });
+      }
+      // The RPC answers, and every balance is genuinely zero.
+      return Response.json({ result: '0x0' });
+    }));
+
+    const store = new Map<string, string>();
+    const kv = {
+      get: async (k: string) => store.get(k) ?? null,
+      put: async (k: string, v: string) => { store.set(k, v); },
+    };
+    await kv.put(SNAPSHOT_KEY, JSON.stringify(PRE_ROTATION));
+
+    const snap = await refreshSnapshot(kv, 'https://mainnet.base.org');
+
+    expect(snap.wallets).toHaveLength(FLEET.length);
+    for (const w of FLEET) {
+      expect(snap.wallets.some((p) => p.id === w.id && p.address === w.address)).toBe(true);
+    }
+    const raw = JSON.stringify(snap);
+    expect(raw).not.toContain('0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75');
+    expect(raw).not.toContain('0x937897fe19F675c96a71078820F21cA9bD637180');
+    expect(raw).not.toContain('0x60C4499870f115664d7FfD8411b023DBEf3377d9');
+    expect(raw).not.toContain('Gas Station 3');
+    // KV now holds the corrected snapshot, so the next read cannot resurrect
+    // the old one.
+    expect(store.get(SNAPSHOT_KEY)).not.toContain('0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75');
+    expect(store.get(SNAPSHOT_KEY)).not.toContain('0x60C4499870f115664d7FfD8411b023DBEf3377d9');
+  });
+
+  it('does not attribute the old CSW chains to the rotated HOT wallet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('dexpaprika.com') || url.includes('coinpaprika')) {
+        return Response.json({ quotes: { USD: { price: 1900 } }, summary: { price_usd: 1900 }, results: [] });
+      }
+      return Response.json({ result: '0x0' });
+    }));
+
+    const store = new Map<string, string>();
+    const kv = {
+      get: async (k: string) => store.get(k) ?? null,
+      put: async (k: string, v: string) => { store.set(k, v); },
+    };
+    // A pre-rotation snapshot whose 'hot' entry carries the old CSW chains.
+    await kv.put(SNAPSHOT_KEY, JSON.stringify({
+      ...PRE_ROTATION,
+      wallets: PRE_ROTATION.wallets.map((w) =>
+        w.id === 'hot'
+          ? {
+              ...w,
+              chains: [
+                { id: 'base', name: 'Base', usdc: 53651.098082 },
+                { id: 'ethereum', name: 'Ethereum', usdc: 106863.872238 },
+                { id: 'arbitrum', name: 'Arbitrum', usdc: 54437.421675 },
+              ],
+            }
+          : w,
+      ),
+    }));
+
+    const snap = await refreshSnapshot(kv, 'https://mainnet.base.org');
+    const hot = snap.wallets.find((w) => w.id === 'hot');
+    expect(hot?.usdc).toBe(0);
+    expect(hot?.chains?.every((c) => c.usdc === 0)).toBe(true);
+    expect(snap.working_capital_usdc).toBe(0);
   });
 });

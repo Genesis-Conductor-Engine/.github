@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext, ScheduledEvent } from './runtime-types';
 import { describeVerifyFailure, unwrapSmartWalletSignature } from './index';
+import { FLEET } from './lib/cashflow';
 
 const httpMocks = vi.hoisted(() => ({
   encodePaymentRequiredHeader: vi.fn(() => 'encoded-payment-required'),
@@ -778,12 +779,33 @@ describe('x402 Worker cashflow surface', () => {
 
     const json = await dispatch('/api/cashflow', {}, { API_KEYS: kv, BASE_RPC_URL: 'https://mainnet.base.org' });
     expect(json.response.status).toBe(200);
-    const body = await responseJson<{ priced_usd: number; roi: { period_net_usdc: number } }>(json.response);
+    const body = await responseJson<{
+      priced_usd: number;
+      working_capital_usdc: number;
+      wallets: { id: string; address: string; usd: number }[];
+      roi: { period_net_usdc: number };
+    }>(json.response);
     expect(body.roi.period_net_usdc).toBe(-9752.961319);
-    expect(body.priced_usd).toBeGreaterThan(0);
+    // The rotated fleet is legitimately all-zero on Base/Ethereum/Arbitrum,
+    // so the live snapshot prices at $0. The pre-rotation code reported
+    // $736k here by resurrecting a stale KV snapshot that attributed a
+    // third-party Safe proxy's balances to us.
+    expect(body.priced_usd).toBe(0);
+    expect(body.working_capital_usdc).toBe(0);
+    expect(body.wallets.map((w) => w.address).sort()).toEqual(
+      FLEET.map((w) => w.address).sort(),
+    );
+    // Never the foreign addresses the stale snapshot carried.
+    for (const foreign of [
+      '0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75',
+      '0x937897fe19F675c96a71078820F21cA9bD637180',
+      '0x60C4499870f115664d7FfD8411b023DBEf3377d9',
+    ]) {
+      expect(body.wallets.map((w) => w.address)).not.toContain(foreign);
+    }
   });
 
-  it('serves a priced KV snapshot immediately and refreshes via waitUntil', async () => {
+  it('serves a fleet-matching KV snapshot immediately and refreshes via waitUntil', async () => {
     stubFetch((input) => {
       const url = String(input);
       if (url.includes('coinpaprika') || url.includes('dexpaprika')) {
@@ -795,9 +817,20 @@ describe('x402 Worker cashflow surface', () => {
     await kv.put('cashflow:snapshot', JSON.stringify({
       generated_at: '2026-08-15T12:00:00.000Z',
       eth_usd: 1800,
-      wallets: [],
-      priced_usd: 81993.9,
-      working_capital_usdc: 53743.74,
+      // The cache gate is now "does this snapshot match the CURRENT fleet",
+      // not "is priced_usd > 0" — the rotated fleet is legitimately $0, and a
+      // priced_usd gate would disable the cache forever. A snapshot built
+      // from a different (pre-rotation) fleet must never be served.
+      wallets: FLEET.map((w) => ({
+        id: w.id,
+        role: w.role,
+        address: w.address,
+        eth: 0,
+        usdc: 0,
+        usd: 0,
+      })),
+      priced_usd: 0,
+      working_capital_usdc: 0,
       window: {
         start: '2026-08-09T00:00:00Z',
         end: '2026-08-15T10:21:00Z',
@@ -811,7 +844,7 @@ describe('x402 Worker cashflow surface', () => {
         transfer_count: 3258,
         source: 'dune:erc20_base.evt_Transfer',
       },
-      roi: { period_net_usdc: -9752.961319, period_roi_on_prose_open: -0.158, implied_true_open_usdc: 64181.73, period_roi_on_implied_open: -0.15, working_capital_usdc: 53743.74, flywheel: [] },
+      roi: { period_net_usdc: -9752.961319, period_roi_on_prose_open: -0.158, implied_true_open_usdc: 64181.73, period_roi_on_implied_open: -0.15, working_capital_usdc: 0, flywheel: [] },
       vendors: [],
       ledger: [],
       assumptions: ['seed'],
@@ -821,6 +854,69 @@ describe('x402 Worker cashflow surface', () => {
     expect(page.response.headers.get('X-Cashflow-Cache')).toBe('hit');
     expect(page.ctx.waitUntil).toHaveBeenCalled();
     await expect(page.response.text()).resolves.toContain('2026-08-15T12:00:00.000Z');
+  });
+
+  it('never serves a pre-rotation KV snapshot from cache', async () => {
+    // End-to-end regression at the Worker surface: the KV slot used to hold
+    // a snapshot written by the pre-rotation code, carrying the Coinbase
+    // bundler (0x54E2), the third-party Safe proxy (0x9378) and the
+    // compromised HOT (0x60C449). It was served as a cache hit forever.
+    stubFetch((input) => {
+      const url = String(input);
+      if (url.includes('coinpaprika') || url.includes('dexpaprika')) {
+        return Response.json({ quotes: { USD: { price: 2000 } }, summary: { price_usd: 2000 }, results: [] });
+      }
+      return Response.json({ result: '0x0' });
+    });
+    const kv = memoryKv();
+    await kv.put('cashflow:snapshot', JSON.stringify({
+      generated_at: '2026-11-15T00:00:55.950Z',
+      eth_usd: 1824.41,
+      wallets: [
+        { id: 'treasury', role: 'Root treasury (locked)', address: '0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75', eth: 15.61, usdc: 741.39, usd: 29271 },
+        { id: 'settlement', role: 'Settlement / working capital (CSW)', address: '0x937897fe19F675c96a71078820F21cA9bD637180', eth: 0, usdc: 706338.8324, usd: 706338.8324 },
+        { id: 'hot', role: 'HOT_X402 / LP owner', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9', eth: 0.00000235, usdc: 0, usd: 0 },
+        { id: 'payto', role: 'x402 VAULT_ADDRESS (payTo = HOT)', address: '0x60C4499870f115664d7FfD8411b023DBEf3377d9', eth: 0.00000235, usdc: 0, usd: 0 },
+        { id: 'main', role: 'x402 MAIN_WALLET (signer)', address: '0x967a9C352a87D3a72baa7aD10632A7276101dBc9', eth: 0, usdc: 0, usd: 0 },
+      ],
+      priced_usd: 736389.72,
+      working_capital_usdc: 706338.8324,
+      window: {
+        start: '2026-08-09T00:00:00Z',
+        end: '2026-08-15T10:21:00Z',
+        opening_prose_usdc: 61745,
+        sum_in_usdc: 100159.196218,
+        sum_out_usdc: 109912.157537,
+        net_usdc: -9752.961319,
+        live_close_usdc: 54428.773194,
+        implied_close_usdc: 51992.038681,
+        residual_usdc: 2436.734513,
+        transfer_count: 3258,
+        source: 'dune:erc20_base.evt_Transfer',
+      },
+      roi: { period_net_usdc: -9752.961319, period_roi_on_prose_open: -0.158, implied_true_open_usdc: 64181.73, period_roi_on_implied_open: -0.15, working_capital_usdc: 706338.8324, flywheel: [] },
+      vendors: [],
+      ledger: [],
+      assumptions: ['x402 payTo is HOT 0x60C4499870f115664d7FfD8411b023DBEf3377d9.'],
+    }));
+
+    const json = await dispatch('/api/cashflow', {}, { API_KEYS: kv, BASE_RPC_URL: 'https://mainnet.base.org' });
+    expect(json.response.status).toBe(200);
+    expect(json.response.headers.get('X-Cashflow-Cache')).toBe('miss');
+    const body = await responseJson<{
+      priced_usd: number;
+      working_capital_usdc: number;
+      wallets: { id: string; address: string }[];
+      assumptions: string[];
+    }>(json.response);
+    expect(body.priced_usd).toBe(0);
+    expect(body.working_capital_usdc).toBe(0);
+    expect(body.wallets.map((w) => w.address).sort()).toEqual(
+      FLEET.map((w) => w.address).sort(),
+    );
+    expect(JSON.stringify(body)).not.toContain('0x54E2ACaB04C89A3Fe02852BF8dd69Ee8F526bC75');
+    expect(JSON.stringify(body)).not.toContain('0x937897fe19F675c96a71078820F21cA9bD637180');
+    expect(JSON.stringify(body)).not.toContain('0x60C4499870f115664d7FfD8411b023DBEf3377d9');
   });
 
   it('serves the HOT fund page with the Base 100 USDC slice', async () => {
